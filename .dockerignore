@@ -1,0 +1,13 @@
+.git
+node_modules
+api/.venv
+api/.local
+.env
+.env.*
+output
+artifacts
+test-results
+playwright-report
+dist
+__pycache__
+*.pyc

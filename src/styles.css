@@ -1,0 +1,30 @@
+@import "tailwindcss" source("..");
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+@theme inline {
+ --color-ink:var(--ink);--color-muted:var(--muted);--color-line:var(--line);--color-primary:var(--primary);--color-primary-soft:var(--soft);--color-soft:var(--soft);--color-surface:var(--surface);--color-canvas:var(--canvas);--color-field:var(--field);--color-danger:var(--danger);--color-success:var(--success);
+ --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+@layer base {
+ :root {--ink:#172033;--muted:#66728a;--line:#e3e8f1;--primary:#5b5ce2;--soft:#eeedff;--surface:#fff;--canvas:#f5f6fa;--field:#fbfcfe;--danger:#b6394d;--success:#127563;@apply scheme-light;}
+ :root[data-theme='dark'] {--ink:#edf0f8;--muted:#a6b1c7;--line:#30394c;--primary:#b1aaff;--soft:#292c48;--surface:#191f2c;--canvas:#10141e;--field:#151b28;--danger:#ffb0bd;--success:#72d6c3;@apply scheme-dark;}
+ body {@apply m-0 min-w-[320px] bg-canvas font-sans text-ink antialiased;}
+ button,input,select,textarea {@apply [font:inherit];}
+ button,a,summary {@apply [-webkit-tap-highlight-color:transparent];}
+ :where(button,a,summary):focus-visible {@apply outline-2 outline-offset-3 outline-primary;}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{@apply animate-none! transition-none! duration-0! scroll-auto!;}}
+@media print {
+ @page {size:A4;margin:12mm;}
+ * {@apply animate-none! transition-none! duration-0! shadow-none!;}
+ body {@apply bg-white! text-slate-900!;}
+ aside,nav,button,input,select,textarea,.platform-session {@apply hidden!;}
+ main {@apply m-0! max-w-none! p-0!;}
+ [role=dialog] {@apply static! max-h-none! w-full! translate-none! border-0! bg-white! p-0! text-slate-900!;}
+ body:has([role=dialog]) #root {@apply hidden!;}
+ [data-radix-popper-content-wrapper] {@apply hidden!;}
+}
+
+@media print {
+ :root[data-theme] { @apply [--ink:#172033] [--muted:#66728a] [--line:#dce1e9] [--soft:#f0f2f7] [--surface:#fff] [--canvas:#fff] [--field:#fff] [--primary:#5b5ce2] scheme-light; }
+ .workspace-overlay { @apply hidden!; }
+}

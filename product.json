@@ -1,0 +1,11 @@
+{
+  "id": "taskbox",
+  "kind": "task",
+  "title": "TaskBox",
+  "tagline": "Focus on the work that moves you.",
+  "description": "A considered space to plan, prioritise and finish your next important thing.",
+  "eyebrow": "WORK, IN FOCUS",
+  "collection": "Tasks",
+  "webPort": 5183,
+  "apiPort": 8103
+}

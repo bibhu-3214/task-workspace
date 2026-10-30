@@ -1,70 +1,64 @@
-# Getting Started with Create React App
+# TaskBox
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A considered space to plan, prioritise and finish your next important thing.
 
-## Available Scripts
+React 19 · strict TypeScript · Tailwind CSS 4 · Vite · Django · PostgreSQL.
 
-In the project directory, you can run:
+## Run locally
 
-### `npm start`
+Use Node 22.13+ (under 25), Python 3.13 and Yarn 1.22.22. From this project folder:
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+```sh
+yarn install --frozen-lockfile
+npm run dev
+```
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+Open **http://127.0.0.1:5183**. The launcher prepares a Python environment when needed, starts a private local PostgreSQL cluster and runs the API on loopback port 8103. A private local owner account is created and its login fields are prefilled; click **Sign in** to begin, or create another account. No external email, OAuth, payment or legacy service is contacted. No default account/password is published.
 
-### `npm test`
+The five products have separate databases, cookie names and local ports. Closing this command stops only this project's services. Its local records remain in ignored `api/.local/postgres/`; do not delete that folder to clear a build cache.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Prefilled local login
 
-### `npm run build`
+`npm run dev` creates a separate non-admin local account for this app and stores its generated credentials privately in the ignored `api/.local/local-login.json` file (owner-only permissions). The same account and workspace are reused on restart. The email and masked password are editable; signup fields stay blank. No BillFlow credentials are reused.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Prefill is available only in the loopback development launcher. Production builds, previews and remote databases do not enable it; no public credential endpoint is added. Restart an already-running development command to load the new setup. Manually changing an account password does not reset it on restart; update the private local-login file if you want its prefill to match the new password.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Product workflow
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Create tasks with descriptions, priority and optional due dates. Filter by workflow state, mark work complete or reopen it, search and paginate the list. Overview counts come from saved tasks.
 
-### `npm run eject`
+Mutations update the displayed records after the server accepts them. Stale revisions are rejected instead of overwriting another editor's work. Passwords are hashed on the server; sessions use HttpOnly cookies and CSRF verification. The browser does not persist a login JWT or password in local/session storage. Account settings support password changes. Email recovery/social providers are not configured for this local release.
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+Appearance has light/dark support. Shared fields, option panels, calendars and dialogs use Tailwind utilities, with keyboard focus and reduced-motion behavior. Charts and statistics use actual saved records. Empty accounts start empty.
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Validation
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+```sh
+npm run check
+npm test
+npm run test:api
+npm run build
+PLAYWRIGHT_CHANNEL=chrome npm run test:e2e
+```
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+The API tests and browser fixtures create disposable PostgreSQL databases. Browser tests use fictional accounts and separate test settings; they refuse a non-temporary acceptance database. Omit `PLAYWRIGHT_CHANNEL` after `yarn playwright install chromium` to use the installed test Chromium instead of Chrome. Browser artifacts are ignored under `output/`.
 
-## Learn More
+## Existing data
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+The original code remains in Git history and its README is retained in `docs/README-LEGACY.md`. The old external API is not used as an implicit migration source. Existing tokens are not forwarded to a new service. Convert an explicitly supplied legacy JSON array locally:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```sh
+node scripts/convert-legacy.mjs old-export.json converted.json
+```
 
-### Code Splitting
+Review the output and use the application's Import control. Conversion never overwrites its input or an existing output file. Missing creation timestamps use the conversion time, and unknown film release years stay blank. No import is performed automatically. JSON exports are plaintext; retain them privately. Importing replaces the current account workspace only after confirmation.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## Deployment preparation
 
-### Analyzing the Bundle Size
+`Dockerfile` builds the SPA and serves it with Django/WhiteNoise and Gunicorn. Configure a private `SECRET_KEY` (50+ characters), PostgreSQL `DATABASE_URL` and explicit `ALLOWED_HOSTS`. Set `TRUSTED_PROXY_TLS=1` only behind an ingress that strips untrusted forwarded-protocol headers and terminates HTTPS. Run migrations as a separate release command:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+```sh
+python manage.py migrate --settings=config.settings.production
+```
 
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Production settings reject missing secrets, wildcard/empty hosts and non-PostgreSQL databases, enable secure cookies and HTTPS/HSTS, and add response security headers. Back up and restore-test PostgreSQL before relying on the service. Hosting, provider/email delivery, operational monitoring, external ingress and recovery drills require their own deployment validation; no public launch is claimed. Publishing source changes does not deploy the application.

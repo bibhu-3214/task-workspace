@@ -1,0 +1,12 @@
+import React from 'react';
+import type {z} from 'zod';
+import type {WorkspaceRecord} from './platform/records';
+import ReactDOM from 'react-dom/client';
+import {BrowserRouter} from 'react-router-dom';
+import ServiceGate from './platform/ServiceGate';
+import Workspace from './platform/Workspace';
+import {schemas,kindSchema} from './platform/records';
+import product from '../product.json';
+import './styles.css';
+const schema:z.ZodType<WorkspaceRecord>=schemas[kindSchema.parse(product.kind)];
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><BrowserRouter><ServiceGate<WorkspaceRecord> schema={schema}>{state=><Workspace state={state}/>}</ServiceGate></BrowserRouter></React.StrictMode>);
