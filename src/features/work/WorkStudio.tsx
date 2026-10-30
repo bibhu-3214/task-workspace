@@ -1,0 +1,1113 @@
+import { useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  BookOpen,
+  Check,
+  ClipboardList,
+  Download,
+  FolderKanban,
+  Moon,
+  Pencil,
+  Pin,
+  Plus,
+  Search,
+  Sun,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import type { WorkspaceState } from "../../platform/AccountWorkspaceGate";
+import { Button, Dropdown, Input, Modal, Textarea } from "../../platform/ui";
+import DateInput from "../../platform/DateInput";
+import { message } from "../../platform/workspaceApi";
+import product from "../../../product.json";
+import {
+  isNote,
+  isProject,
+  isTask,
+  localToday,
+  noteSchema,
+  parseBackup,
+  projectSchema,
+  stampRecord,
+  taskSchema,
+  validateWorkspace,
+  type Note,
+  type Project,
+  type Task,
+  type WorkRecord,
+} from "./model";
+import { reviewNotesImport, type NotesImport } from "../notes/importNotes";
+
+type Editor =
+  | { kind: "task"; record?: Task }
+  | { kind: "note"; record?: Note }
+  | { kind: "project"; record?: Project };
+const statuses = ["To do", "In progress", "Done"] as const;
+const fieldLabel = "grid min-w-0 gap-2 text-sm font-medium";
+function download(records: WorkRecord[]) {
+  const url = URL.createObjectURL(
+    new Blob(
+      [JSON.stringify({ version: 2, product: product.id, records }, null, 2)],
+      { type: "application/json" },
+    ),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "task-workspace-backup.json";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+export default function WorkStudio({
+  state,
+}: {
+  state: WorkspaceState<WorkRecord>;
+}) {
+  const [params, setParams] = useSearchParams();
+  const view =
+    params.get("view") === "notes"
+      ? "notes"
+      : params.get("view") === "projects"
+        ? "projects"
+        : "board";
+  const [query, setQuery] = useState(""),
+    [project, setProject] = useState("all");
+  const [editor, setEditor] = useState<Editor | null>(null),
+    [dirty, setDirty] = useState(false),
+    [discard, setDiscard] = useState(false);
+  const [remove, setRemove] = useState<WorkRecord | null>(null),
+    [reading, setReading] = useState<Note | null>(null);
+  const [error, setError] = useState(""),
+    [notice, setNotice] = useState("");
+  const [imported, setImported] = useState<NotesImport | null>(null),
+    [notesSource, setNotesSource] = useState<unknown>(null),
+    [importProject, setImportProject] = useState("inbox");
+  const [restore, setRestore] = useState<WorkRecord[] | null>(null);
+  const [dark, setDark] = useState(
+    () => document.documentElement.dataset.theme === "dark",
+  );
+  const notesFile = useRef<HTMLInputElement>(null),
+    backupFile = useRef<HTMLInputElement>(null);
+  const projects = state.records.filter(isProject),
+    tasks = state.records.filter(isTask),
+    notes = state.records.filter(isNote);
+  const projectOptions = [
+    { value: "inbox", label: "Inbox" },
+    ...projects.map((item) => ({ value: item.id, label: item.name })),
+  ];
+  const projectName = (id?: string) =>
+    projects.find((item) => item.id === id)?.name || "Inbox";
+  const matches = (record: Task | Note) =>
+    (project === "all" || (record.projectId || "inbox") === project) &&
+    (
+      record.title +
+      " " +
+      ("body" in record ? record.body + " " + record.tag : record.description)
+    )
+      .toLowerCase()
+      .includes(query.toLowerCase().trim());
+  const shownTasks = tasks.filter(matches),
+    shownNotes = notes
+      .filter(matches)
+      .sort(
+        (a, b) =>
+          Number(b.pinned) - Number(a.pinned) ||
+          b.updatedAt.localeCompare(a.updatedAt),
+      );
+  function navigate(next: string) {
+    setParams({ view: next });
+    setQuery("");
+    setError("");
+  }
+  function open(next: Editor) {
+    setEditor(next);
+    setDirty(false);
+    setError("");
+  }
+  function close() {
+    if (state.busy) return;
+    if (dirty) setDiscard(true);
+    else setEditor(null);
+  }
+  async function save(records: WorkRecord[], success: string) {
+    setError("");
+    try {
+      await state.save(validateWorkspace(records));
+      setNotice(success);
+      return true;
+    } catch (failure) {
+      setError(message(failure));
+      return false;
+    }
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editor) return;
+    const values = new FormData(event.currentTarget),
+      previous = editor.record;
+    const common = {
+      ...(previous || stampRecord()),
+      updatedAt: new Date().toISOString(),
+    };
+    const projectId = String(values.get("projectId") || "inbox");
+    try {
+      const next =
+        editor.kind === "project"
+          ? projectSchema.parse({
+              ...common,
+              recordType: "project",
+              name: values.get("name"),
+              description: values.get("description"),
+            })
+          : editor.kind === "note"
+            ? noteSchema.parse({
+                ...common,
+                recordType: "note",
+                projectId: projectId === "inbox" ? "" : projectId,
+                title: values.get("title"),
+                body: values.get("body"),
+                tag: values.get("tag"),
+                pinned: editor.record?.pinned || false,
+              })
+            : taskSchema.parse({
+                ...common,
+                recordType: "task",
+                projectId: projectId === "inbox" ? "" : projectId,
+                title: values.get("title"),
+                description: values.get("description"),
+                priority: values.get("priority"),
+                dueDate: values.get("dueDate"),
+                status: values.get("status"),
+              });
+      const records = previous
+        ? state.records.map((record) =>
+            record.id === previous.id ? next : record,
+          )
+        : [...state.records, next];
+      if (
+        await save(
+          records,
+          previous
+            ? "Changes saved."
+            : editor.kind === "project"
+              ? "Project created."
+              : editor.kind === "note"
+                ? "Note saved."
+                : "Task added.",
+        )
+      ) {
+        setEditor(null);
+        setDirty(false);
+      }
+    } catch (failure) {
+      setError(message(failure));
+    }
+  }
+  async function readFile(input: HTMLInputElement, kind: "notes" | "backup") {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      if (file.size > 1_500_000)
+        throw new Error("Choose a JSON file under 1.5 MB.");
+      const raw: unknown = JSON.parse(await file.text());
+      setError("");
+      if (kind === "backup") setRestore(parseBackup(raw));
+      else {
+        setNotesSource(raw);
+        setImportProject("inbox");
+        setImported(await reviewNotesImport(raw, state.records, ""));
+      }
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      input.value = "";
+    }
+  }
+  async function changeImportProject(value: string) {
+    try {
+      setImportProject(value);
+      setImported(
+        await reviewNotesImport(
+          notesSource,
+          state.records,
+          value === "inbox" ? "" : value,
+        ),
+      );
+    } catch (failure) {
+      setError(message(failure));
+    }
+  }
+  const currentTask = editor?.kind === "task" ? editor.record : undefined;
+  const currentNote = editor?.kind === "note" ? editor.record : undefined;
+  const currentProject = editor?.kind === "project" ? editor.record : undefined;
+  const noun = editor?.kind || "task";
+  return (
+    <div className="min-h-[calc(100dvh-48px)] bg-canvas text-ink">
+      <a
+        href="#work-main"
+        className="sr-only z-50 rounded-lg bg-ink p-3 text-canvas focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      >
+        Skip to content
+      </a>
+      <aside className="border-b border-line bg-surface px-5 py-5 lg:fixed lg:top-12 lg:bottom-0 lg:w-64 lg:border-r lg:border-b-0 lg:px-6 lg:py-8">
+        <a
+          href="/"
+          className="flex items-center gap-3 text-xl font-semibold tracking-tight"
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-white dark:text-slate-950">
+            <FolderKanban size={22} />
+          </span>
+          <span>Task Workspace</span>
+        </a>
+        <p className="mt-4 hidden text-xs leading-6 text-muted lg:block">
+          Projects, tasks and the thinking behind them.
+        </p>
+        <nav
+          aria-label="Workspace navigation"
+          className="mt-6 flex gap-2 overflow-x-auto lg:grid lg:gap-2"
+        >
+          {[
+            ["board", "Task board", ClipboardList],
+            ["notes", "Project notes", BookOpen],
+            ["projects", "Projects", FolderKanban],
+          ].map(([key, label, Icon]) => {
+            const Component = Icon as typeof ClipboardList;
+            return (
+              <button
+                key={String(key)}
+                type="button"
+                aria-current={view === key ? "page" : undefined}
+                onClick={() => navigate(String(key))}
+                className={`flex min-h-11 shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium ${view === key ? "bg-soft text-primary" : "text-muted hover:bg-soft"}`}
+              >
+                <Component size={18} />
+                {String(label)}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="mt-10 hidden border-t border-line pt-5 text-xs leading-6 text-muted lg:block">
+          <strong className="block text-ink">Your private workspace</strong>
+          <p className="mt-2">
+            Tasks and notes stay together. Source Notes Workspace accounts
+            remain separate until you explicitly import their exports.
+          </p>
+        </div>
+      </aside>
+      <main
+        id="work-main"
+        tabIndex={-1}
+        className="mx-auto max-w-[1700px] p-4 outline-none sm:p-8 lg:ml-64 lg:p-10"
+      >
+        <header className="flex flex-wrap items-start justify-between gap-5">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[.18em] text-primary uppercase">
+              Work, with context
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+              {view === "board"
+                ? "A clear plan for what comes next."
+                : view === "notes"
+                  ? "Ideas belong beside the work."
+                  : "Give your work a home."}
+            </h1>
+            <p className="mt-3 max-w-xl text-sm leading-7 text-muted">
+              {view === "board"
+                ? "Move tasks through your workflow and keep the details close."
+                : view === "notes"
+                  ? "Read, pin and organise the notes linked to your projects."
+                  : "Bring related tasks and notes into focused projects."}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              tone="quiet"
+              aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={() => {
+                const next = !dark;
+                setDark(next);
+                document.documentElement.dataset.theme = next
+                  ? "dark"
+                  : "light";
+                try {
+                  localStorage.setItem(
+                    product.storageNamespace + ".appearance",
+                    next ? "dark" : "light",
+                  );
+                } catch {
+                  /* Appearance remains available for this visit. */
+                }
+              }}
+            >
+              {dark ? <Sun size={17} /> : <Moon size={17} />}
+            </Button>
+            <Button
+              disabled={state.busy}
+              onClick={() =>
+                open({
+                  kind:
+                    view === "notes"
+                      ? "note"
+                      : view === "projects"
+                        ? "project"
+                        : "task",
+                })
+              }
+            >
+              <Plus size={17} />
+              {view === "notes"
+                ? "Add note"
+                : view === "projects"
+                  ? "New project"
+                  : "Add task"}
+            </Button>
+          </div>
+        </header>
+        {notice && (
+          <p
+            role="status"
+            className="mt-5 rounded-xl bg-success/10 p-3 text-sm text-success"
+          >
+            {notice}
+          </p>
+        )}
+        {error && !editor && (
+          <p
+            role="alert"
+            className="mt-5 rounded-xl bg-danger/10 p-3 text-sm text-danger"
+          >
+            {error}
+          </p>
+        )}
+        <section
+          aria-label="Workspace tools"
+          className="mt-8 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface p-4"
+        >
+          <div className="relative min-w-48 flex-1">
+            <Search
+              size={17}
+              className="pointer-events-none absolute top-3.5 left-3 text-muted"
+            />
+            <Input
+              type="search"
+              aria-label="Search work"
+              placeholder={
+                view === "notes" ? "Search notes and tags" : "Search tasks"
+              }
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <div className="min-w-44">
+            <Dropdown
+              label="Filter by project"
+              value={project}
+              onChange={setProject}
+              options={[
+                { value: "all", label: "All projects" },
+                ...projectOptions,
+              ]}
+            />
+          </div>
+          <Button
+            tone="quiet"
+            disabled={state.busy}
+            onClick={() => notesFile.current?.click()}
+          >
+            <Upload size={15} />
+            Import notes
+          </Button>
+          <Button
+            tone="quiet"
+            disabled={state.busy}
+            onClick={() => download(state.records)}
+          >
+            <Download size={15} />
+            Export JSON
+          </Button>
+          <Button
+            tone="quiet"
+            disabled={state.busy}
+            onClick={() => backupFile.current?.click()}
+          >
+            Restore backup
+          </Button>
+          <input
+            ref={notesFile}
+            type="file"
+            accept=".json,application/json"
+            aria-label="Import Notes Workspace JSON"
+            className="sr-only"
+            onChange={(event) => void readFile(event.currentTarget, "notes")}
+          />
+          <input
+            ref={backupFile}
+            type="file"
+            accept=".json,application/json"
+            aria-label="Restore workspace JSON"
+            className="sr-only"
+            onChange={(event) => void readFile(event.currentTarget, "backup")}
+          />
+        </section>
+        {view === "board" && (
+          <>
+            <div className="mt-6 flex flex-wrap gap-4 text-xs text-muted">
+              <span>{tasks.length} tasks</span>
+              <span>
+                {tasks.filter((task) => task.status === "Done").length}{" "}
+                completed
+              </span>
+              <span>{notes.length} project notes</span>
+              <span>{projects.length} projects</span>
+            </div>
+            <div className="mt-5 grid gap-5 xl:grid-cols-3">
+              {statuses.map((status) => (
+                <section
+                  key={status}
+                  aria-label={status + " tasks"}
+                  className="min-w-0 rounded-2xl border border-line bg-surface/70 p-4"
+                >
+                  <header className="mb-4 flex items-center justify-between">
+                    <h2 className="flex items-center gap-2 font-semibold">
+                      <span
+                        className={`size-2 rounded-full ${status === "Done" ? "bg-success" : status === "In progress" ? "bg-primary" : "bg-muted"}`}
+                      />
+                      {status}
+                    </h2>
+                    <span className="rounded-md bg-soft px-2 py-1 text-xs text-muted">
+                      {
+                        shownTasks.filter((task) => task.status === status)
+                          .length
+                      }
+                    </span>
+                  </header>
+                  <div className="grid gap-3">
+                    {shownTasks
+                      .filter((task) => task.status === status)
+                      .map((task) => (
+                        <article
+                          key={task.id}
+                          className="rounded-xl border border-line bg-surface p-4 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span
+                              className={`rounded-md px-2 py-1 text-[10px] font-semibold ${task.priority === "High" ? "bg-danger/10 text-danger" : "bg-soft text-muted"}`}
+                            >
+                              {task.priority} priority
+                            </span>
+                            <span className="flex">
+                              <Button
+                                tone="quiet"
+                                className="min-h-8 p-2"
+                                aria-label={"Edit " + task.title}
+                                disabled={state.busy}
+                                onClick={() =>
+                                  open({ kind: "task", record: task })
+                                }
+                              >
+                                <Pencil size={14} />
+                              </Button>
+                              <Button
+                                tone="quiet"
+                                className="ml-1 min-h-8 p-2"
+                                aria-label={"Delete " + task.title}
+                                disabled={state.busy}
+                                onClick={() => setRemove(task)}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </span>
+                          </div>
+                          <h3 className="mt-3 font-semibold leading-6">
+                            {task.title}
+                          </h3>
+                          {task.description && (
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
+                              {task.description}
+                            </p>
+                          )}
+                          <p className="mt-4 text-[11px] text-muted">
+                            {projectName(task.projectId)}
+                          </p>
+                          {task.dueDate && (
+                            <p
+                              className={`mt-2 text-xs ${task.status !== "Done" && task.dueDate < localToday() ? "text-danger" : "text-muted"}`}
+                            >
+                              Due {task.dueDate}
+                            </p>
+                          )}
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {status !== "Done" && (
+                              <Button
+                                tone="quiet"
+                                className="min-h-9 px-3 py-2 text-xs"
+                                disabled={state.busy}
+                                onClick={() =>
+                                  void save(
+                                    state.records.map((record) =>
+                                      record.id === task.id
+                                        ? {
+                                            ...task,
+                                            status: "Done",
+                                            updatedAt: new Date().toISOString(),
+                                          }
+                                        : record,
+                                    ),
+                                    "Task completed.",
+                                  )
+                                }
+                              >
+                                <Check size={14} />
+                                Mark complete
+                              </Button>
+                            )}
+                            {status === "To do" && (
+                              <Button
+                                tone="quiet"
+                                className="min-h-9 px-3 py-2 text-xs"
+                                disabled={state.busy}
+                                onClick={() =>
+                                  void save(
+                                    state.records.map((record) =>
+                                      record.id === task.id
+                                        ? {
+                                            ...task,
+                                            status: "In progress",
+                                            updatedAt: new Date().toISOString(),
+                                          }
+                                        : record,
+                                    ),
+                                    "Task started.",
+                                  )
+                                }
+                              >
+                                Start task
+                              </Button>
+                            )}
+                            {status === "Done" && (
+                              <Button
+                                tone="quiet"
+                                className="min-h-9 px-3 py-2 text-xs"
+                                disabled={state.busy}
+                                onClick={() =>
+                                  void save(
+                                    state.records.map((record) =>
+                                      record.id === task.id
+                                        ? {
+                                            ...task,
+                                            status: "To do",
+                                            updatedAt: new Date().toISOString(),
+                                          }
+                                        : record,
+                                    ),
+                                    "Task reopened.",
+                                  )
+                                }
+                              >
+                                Reopen task
+                              </Button>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    {!shownTasks.some((task) => task.status === status) && (
+                      <p className="rounded-xl border border-dashed border-line p-6 text-center text-xs leading-6 text-muted">
+                        {status === "To do"
+                          ? "A little breathing room. Add your next task."
+                          : status === "In progress"
+                            ? "Start a task when you are ready to focus."
+                            : "Your completed work will appear here."}
+                      </p>
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </>
+        )}
+        {view === "notes" && (
+          <section
+            aria-label="Project notes"
+            className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+          >
+            {shownNotes.map((note) => (
+              <article
+                key={note.id}
+                className="rounded-2xl border border-line bg-surface p-5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="rounded-md bg-soft px-2 py-1 text-[10px] text-primary">
+                    {projectName(note.projectId)}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button
+                      tone="quiet"
+                      className="min-h-8 p-2"
+                      aria-label={note.pinned ? "Unpin note" : "Pin note"}
+                      disabled={state.busy}
+                      onClick={() =>
+                        void save(
+                          state.records.map((record) =>
+                            record.id === note.id
+                              ? {
+                                  ...note,
+                                  pinned: !note.pinned,
+                                  updatedAt: new Date().toISOString(),
+                                }
+                              : record,
+                          ),
+                          note.pinned ? "Note unpinned." : "Note pinned.",
+                        )
+                      }
+                    >
+                      <Pin
+                        size={14}
+                        className={note.pinned ? "fill-current" : ""}
+                      />
+                    </Button>
+                    <Button
+                      tone="quiet"
+                      className="min-h-8 p-2"
+                      aria-label={"Edit " + note.title}
+                      onClick={() => open({ kind: "note", record: note })}
+                    >
+                      <Pencil size={14} />
+                    </Button>
+                    <Button
+                      tone="quiet"
+                      className="min-h-8 p-2"
+                      aria-label={"Delete " + note.title}
+                      onClick={() => setRemove(note)}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReading(note)}
+                  className="mt-4 block w-full text-left"
+                >
+                  <h2 className="font-semibold leading-6">{note.title}</h2>
+                  <p className="mt-3 line-clamp-5 whitespace-pre-wrap text-sm leading-7 text-muted">
+                    {note.body}
+                  </p>
+                </button>
+                <p className="mt-4 text-xs text-muted">
+                  {note.tag || "Untagged"}
+                </p>
+              </article>
+            ))}
+            {!shownNotes.length && (
+              <div className="rounded-2xl border border-dashed border-line p-8 text-center md:col-span-2 xl:col-span-3">
+                <BookOpen className="mx-auto mb-4 text-primary" />
+                <h2 className="font-semibold">
+                  Keep the context beside your tasks.
+                </h2>
+                <p className="mt-2 text-sm leading-7 text-muted">
+                  Write a project note or review an export from Notes Workspace
+                  before importing it.
+                </p>
+                <Button className="mt-5" onClick={() => open({ kind: "note" })}>
+                  Add note
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
+        {view === "projects" && (
+          <section
+            aria-label="Projects"
+            className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3"
+          >
+            {projects.map((item) => {
+              const linked = tasks.filter((task) => task.projectId === item.id);
+              const complete = linked.filter(
+                (task) => task.status === "Done",
+              ).length;
+              return (
+                <article
+                  key={item.id}
+                  className="rounded-2xl border border-line bg-surface p-6"
+                >
+                  <FolderKanban className="mb-5 text-primary" />
+                  <h2 className="text-lg font-semibold">{item.name}</h2>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-muted">
+                    {item.description || "A focused space for related work."}
+                  </p>
+                  <p className="mt-5 text-xs text-muted">
+                    {complete} of {linked.length} tasks complete ·{" "}
+                    {notes.filter((note) => note.projectId === item.id).length}{" "}
+                    notes
+                  </p>
+                  <div className="mt-5 flex gap-2">
+                    <Button
+                      tone="quiet"
+                      onClick={() => {
+                        setProject(item.id);
+                        navigate("board");
+                      }}
+                    >
+                      Open project
+                    </Button>
+                    <Button
+                      tone="quiet"
+                      aria-label={"Edit project " + item.name}
+                      onClick={() => open({ kind: "project", record: item })}
+                    >
+                      <Pencil size={15} />
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+            {!projects.length && (
+              <div className="rounded-2xl border border-dashed border-line p-8 text-center md:col-span-2 xl:col-span-3">
+                <h2 className="font-semibold">Start with one clear project.</h2>
+                <p className="mt-3 text-sm text-muted">
+                  Existing tasks remain safely in Inbox until you choose a
+                  project for them.
+                </p>
+                <Button
+                  className="mt-5"
+                  onClick={() => open({ kind: "project" })}
+                >
+                  New project
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
+        <footer className="mt-10 text-center text-[11px] text-muted">
+          Task Workspace · {tasks.length} tasks · {notes.length} notes · Saved
+          to your account
+        </footer>
+      </main>
+      <Modal
+        open={editor !== null}
+        title={(editor?.record ? "Edit " : "Add ") + noun}
+        onClose={close}
+        busy={state.busy}
+      >
+        <form
+          key={editor?.record?.id || noun}
+          onSubmit={(event) => void submit(event)}
+          onChange={() => setDirty(true)}
+          onInput={() => setDirty(true)}
+          className="grid gap-4"
+        >
+          <fieldset disabled={state.busy} className="grid min-w-0 gap-4">
+            {editor?.kind === "project" ? (
+              <>
+                <label className={fieldLabel}>
+                  Project name
+                  <Input
+                    name="name"
+                    defaultValue={currentProject?.name}
+                    required
+                    minLength={2}
+                    maxLength={80}
+                  />
+                </label>
+                <label className={fieldLabel}>
+                  Project description
+                  <Textarea
+                    name="description"
+                    defaultValue={currentProject?.description}
+                    maxLength={1000}
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <label className={fieldLabel}>
+                  {editor?.kind === "note" ? "Title" : "Task title"}
+                  <Input
+                    name="title"
+                    defaultValue={currentTask?.title || currentNote?.title}
+                    required
+                    maxLength={editor?.kind === "note" ? 160 : 200}
+                  />
+                </label>
+                <div className={fieldLabel}>
+                  <label htmlFor="work-project">Project</label>
+                  <Dropdown
+                    id="work-project"
+                    name="projectId"
+                    label="Project"
+                    defaultValue={
+                      currentTask?.projectId ||
+                      currentNote?.projectId ||
+                      (project !== "all" ? project : "inbox")
+                    }
+                    options={projectOptions}
+                    onChange={() => setDirty(true)}
+                  />
+                </div>
+                {editor?.kind === "note" ? (
+                  <>
+                    <label className={fieldLabel}>
+                      Note
+                      <Textarea
+                        name="body"
+                        defaultValue={currentNote?.body}
+                        required
+                        maxLength={20000}
+                        className="min-h-64"
+                      />
+                    </label>
+                    <label className={fieldLabel}>
+                      Tag
+                      <Input
+                        name="tag"
+                        defaultValue={currentNote?.tag}
+                        maxLength={40}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className={fieldLabel}>
+                      Description
+                      <Textarea
+                        name="description"
+                        defaultValue={currentTask?.description}
+                        maxLength={2000}
+                      />
+                    </label>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className={fieldLabel}>
+                        <label htmlFor="work-priority">Priority</label>
+                        <Dropdown
+                          id="work-priority"
+                          name="priority"
+                          label="Priority"
+                          defaultValue={currentTask?.priority || "Normal"}
+                          options={["Low", "Normal", "High"].map((value) => ({
+                            value,
+                            label: value,
+                          }))}
+                          onChange={() => setDirty(true)}
+                        />
+                      </div>
+                      <div className={fieldLabel}>
+                        <label htmlFor="work-status">Status</label>
+                        <Dropdown
+                          id="work-status"
+                          name="status"
+                          label="Status"
+                          defaultValue={currentTask?.status || "To do"}
+                          options={statuses.map((value) => ({
+                            value,
+                            label: value,
+                          }))}
+                          onChange={() => setDirty(true)}
+                        />
+                      </div>
+                    </div>
+                    <div className={fieldLabel}>
+                      <label htmlFor="work-date">Due date</label>
+                      <DateInput
+                        id="work-date"
+                        name="dueDate"
+                        label="Due date"
+                        defaultValue={currentTask?.dueDate}
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </fieldset>
+          {error && (
+            <p
+              role="alert"
+              className="rounded-xl bg-danger/10 p-3 text-sm text-danger"
+            >
+              {error}
+            </p>
+          )}
+          <div className="mt-3 flex justify-end gap-3">
+            <Button tone="quiet" disabled={state.busy} onClick={close}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={state.busy}>
+              {state.busy ? "Saving…" : "Save " + noun}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+      <Modal
+        open={discard}
+        title="Discard unsaved changes?"
+        onClose={() => setDiscard(false)}
+      >
+        <p className="text-sm leading-7 text-muted">
+          Your edits have not been saved.
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button tone="quiet" onClick={() => setDiscard(false)}>
+            Keep editing
+          </Button>
+          <Button
+            tone="danger"
+            onClick={() => {
+              setDiscard(false);
+              setEditor(null);
+              setDirty(false);
+            }}
+          >
+            Discard changes
+          </Button>
+        </div>
+      </Modal>
+      <Modal
+        open={remove !== null}
+        title="Delete record?"
+        onClose={() => setRemove(null)}
+        busy={state.busy}
+      >
+        <p className="text-sm leading-7 text-muted">
+          This removes the selected record from your account. Other tasks,
+          projects and notes remain available.
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button
+            tone="quiet"
+            disabled={state.busy}
+            onClick={() => setRemove(null)}
+          >
+            Keep record
+          </Button>
+          <Button
+            tone="danger"
+            disabled={state.busy}
+            onClick={async () => {
+              if (
+                remove &&
+                (await save(
+                  state.records.filter((record) => record.id !== remove.id),
+                  "Record deleted.",
+                ))
+              )
+                setRemove(null);
+            }}
+          >
+            Delete record
+          </Button>
+        </div>
+      </Modal>
+      <Modal
+        open={reading !== null}
+        title={reading?.title || "Read note"}
+        onClose={() => setReading(null)}
+      >
+        <p className="text-xs text-muted">
+          {reading ? projectName(reading.projectId) : ""}
+          {reading?.tag ? " · " + reading.tag : ""}
+        </p>
+        <div className="mt-6 whitespace-pre-wrap text-sm leading-8">
+          {reading?.body}
+        </div>
+      </Modal>
+      <Modal
+        open={imported !== null}
+        title="Review Notes Workspace import"
+        onClose={() => {
+          setImported(null);
+          setNotesSource(null);
+        }}
+        busy={state.busy}
+      >
+        <p className="text-sm leading-7 text-muted">
+          {imported?.sourceCount} source notes · {imported?.notes.length} new ·{" "}
+          {imported?.duplicates} already imported. Existing notes and source
+          accounts are preserved. Previously imported IDs are skipped, including
+          any edits you made here.
+        </p>
+        <div className="mt-5">
+          <Dropdown
+            label="Destination project"
+            value={importProject}
+            options={projectOptions}
+            onChange={(value) => void changeImportProject(value)}
+          />
+        </div>
+        <ul className="mt-5 max-h-48 space-y-2 overflow-auto text-sm">
+          {imported?.notes.slice(0, 50).map((note) => (
+            <li key={note.id} className="rounded-lg bg-soft px-3 py-2">
+              {note.title}
+            </li>
+          ))}
+        </ul>
+        {error && (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {error}
+          </p>
+        )}
+        <div className="mt-6 flex justify-end gap-3">
+          <Button
+            tone="quiet"
+            disabled={state.busy}
+            onClick={() => {
+              setImported(null);
+              setNotesSource(null);
+            }}
+          >
+            Cancel import
+          </Button>
+          <Button
+            disabled={state.busy || !imported?.notes.length}
+            onClick={async () => {
+              if (!imported) return;
+              if (
+                await save(
+                  [...state.records, ...imported.notes],
+                  "Notes imported.",
+                )
+              ) {
+                setImported(null);
+                setNotesSource(null);
+                navigate("notes");
+              }
+            }}
+          >
+            Import notes
+          </Button>
+        </div>
+      </Modal>
+      <Modal
+        open={restore !== null}
+        title="Replace workspace from backup?"
+        onClose={() => setRestore(null)}
+        busy={state.busy}
+      >
+        <p className="text-sm leading-7 text-muted">
+          The backup contains {restore?.filter(isTask).length} tasks,{" "}
+          {restore?.filter(isNote).length} notes and{" "}
+          {restore?.filter(isProject).length} projects. Restoring replaces the{" "}
+          {state.records.length} current records. Export a backup before
+          continuing. Old task-only exports are supported.
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button
+            tone="quiet"
+            disabled={state.busy}
+            onClick={() => setRestore(null)}
+          >
+            Cancel import
+          </Button>
+          <Button
+            disabled={state.busy}
+            onClick={async () => {
+              if (restore && (await save(restore, "Workspace restored.")))
+                setRestore(null);
+            }}
+          >
+            Replace workspace
+          </Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}

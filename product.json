@@ -3,13 +3,11 @@
   "kind": "task",
   "title": "Task Workspace",
   "tagline": "Focus on the work that moves you.",
-  "description": "A considered space to plan, prioritise and finish your next important thing.",
+  "description": "Plan projects, move tasks forward and keep their notes together in a private workspace.",
   "eyebrow": "WORK, IN FOCUS",
   "collection": "Tasks",
   "webPort": 5183,
   "apiPort": 8103,
   "storageNamespace": "taskbox",
-  "legacyProductIds": [
-    "taskbox"
-  ]
+  "legacyProductIds": ["taskbox"]
 }

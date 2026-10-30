@@ -44,7 +44,9 @@ export default defineConfig(({ command, mode, isPreview }) => {
       },
       proxy: {
         "/api": {
-          target: "http://127.0.0.1:" + product.apiPort,
+          target:
+            "http://127.0.0.1:" +
+            (process.env.WORKSPACE_API_PORT || product.apiPort),
           changeOrigin: false,
         },
       },

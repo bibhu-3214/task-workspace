@@ -13,4 +13,8 @@ if (
 ):
     raise SystemExit("Acceptance requires an isolated temporary PostgreSQL database.")
 call_command("migrate", verbosity=0, interactive=False)
-call_command("runserver", "127.0.0.1:" + str(settings.PRODUCT["apiPort"]), use_reloader=False)
+call_command(
+    "runserver",
+    "127.0.0.1:" + os.environ.get("WORKSPACE_API_PORT", str(settings.PRODUCT["apiPort"])),
+    use_reloader=False,
+)
