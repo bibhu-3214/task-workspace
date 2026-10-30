@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { z } from "zod";
 import product from "../product.json";
-import { recordSchema } from "../src/platform/records";
+import { recordSchema } from "../src/platform/workspaceRecords";
 
 test("explicit legacy conversion preserves records and refuses overwrites", () => {
   const folder = mkdtempSync(join(tmpdir(), "workspace-conversion-"));
@@ -19,7 +19,7 @@ test("explicit legacy conversion preserves records and refuses overwrites", () =
     const convert = () =>
       spawnSync(
         process.execPath,
-        ["scripts/convert-legacy.mjs", input, output],
+        ["scripts/convert-legacy-data.mjs", input, output],
         { encoding: "utf8" },
       );
     const result = convert();

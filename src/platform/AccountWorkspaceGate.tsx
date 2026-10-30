@@ -16,11 +16,11 @@ import {
   restoreSession,
   signOut,
   workspaceSchema,
-} from "./api";
-import type { Account } from "./api";
+} from "./workspaceApi";
+import type { Account } from "./workspaceApi";
 import { Button, Input, Modal } from "./ui";
 import product from "../../product.json";
-import { getLocalLogin } from "./localLogin";
+import { getLocalCredentials } from "./localCredentials";
 export interface WorkspaceState<T> {
   account: Account;
   records: T[];
@@ -29,7 +29,7 @@ export interface WorkspaceState<T> {
   reload: () => void;
   busy: boolean;
 }
-export default function ServiceGate<T>({
+export default function AccountWorkspaceGate<T>({
   schema,
   children,
 }: {
@@ -46,7 +46,7 @@ export default function ServiceGate<T>({
     [settings, setSettings] = useState(false),
     [notice, setNotice] = useState(""),
     [loadId, setLoadId] = useState(0);
-  const localLogin = getLocalLogin();
+  const localCredentials = getLocalCredentials();
   const epoch = useRef(0),
     expected = useRef(0);
   const envelope = workspaceSchema(schema);
@@ -195,7 +195,7 @@ export default function ServiceGate<T>({
             <p className="mt-2 text-sm leading-6 text-muted">
               {register
                 ? "A private space for your work. No payment card required."
-                : localLogin
+                : localCredentials
                   ? "Your local test account is ready to use."
                   : "Sign in to continue where you left off."}
             </p>
@@ -234,7 +234,7 @@ export default function ServiceGate<T>({
                 Email address
                 <Input
                   name="email"
-                  defaultValue={register ? "" : (localLogin?.email ?? "")}
+                  defaultValue={register ? "" : (localCredentials?.email ?? "")}
                   type="email"
                   autoComplete="email"
                   required
@@ -245,7 +245,9 @@ export default function ServiceGate<T>({
                 <label htmlFor="account-password">Password</label>
                 <Input
                   id="account-password"
-                  defaultValue={register ? "" : (localLogin?.password ?? "")}
+                  defaultValue={
+                    register ? "" : (localCredentials?.password ?? "")
+                  }
                   aria-describedby={register ? "password-guidance" : undefined}
                   name="password"
                   type="password"

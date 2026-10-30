@@ -7,7 +7,7 @@ import {
   orderSchema,
   orderSummary,
   csvCell,
-} from "../src/platform/records";
+} from "../src/platform/workspaceRecords";
 const base = {
   id: "fixture",
   createdAt: "2026-10-30T09:00:00.000Z",

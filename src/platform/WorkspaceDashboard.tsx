@@ -24,7 +24,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import type { WorkspaceState } from "./ServiceGate";
+import type { WorkspaceState } from "./AccountWorkspaceGate";
 import { Button, Dropdown, Input, Modal, Textarea } from "./ui";
 import {
   amount,
@@ -37,11 +37,12 @@ import {
   recordTitle,
   schemas,
   today,
-} from "./records";
-import type { WorkspaceRecord } from "./records";
-import { message } from "./api";
+} from "./workspaceRecords";
+import type { WorkspaceRecord } from "./workspaceRecords";
+import { message } from "./workspaceApi";
 import product from "../../product.json";
 import DateInput from "./DateInput";
+import { parseWorkspaceBackup } from "./workspaceBackup";
 
 function Theme() {
   const [dark, setDark] = useState(
@@ -57,7 +58,7 @@ function Theme() {
         setDark(next);
         try {
           localStorage.setItem(
-            product.id + ".appearance",
+            product.storageNamespace + ".appearance",
             next ? "dark" : "light",
           );
         } catch {
@@ -90,7 +91,7 @@ function download(name: string, body: string, type = "application/json") {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export default function Workspace({
+export default function WorkspaceDashboard({
   state,
 }: {
   state: WorkspaceState<WorkspaceRecord>;
@@ -321,10 +322,10 @@ export default function Workspace({
           href="/"
           className="flex items-center gap-3 text-xl font-semibold tracking-tight"
         >
-          <span className="grid size-10 place-items-center rounded-xl bg-primary text-white dark:text-slate-950 shadow-sm">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-white dark:text-slate-950 shadow-sm">
             <Icon kind={kind} />
           </span>
-          {product.title}
+          <span className="min-w-0 leading-tight">{product.title}</span>
         </a>
         <p className="mt-2 hidden text-xs text-muted lg:block">
           {product.eyebrow}
@@ -502,25 +503,10 @@ export default function Workspace({
                       if (file.size > 1_500_000)
                         throw new Error("Choose a JSON file under 1.5 MB.");
                       const parsed: unknown = JSON.parse(await file.text());
-                      const outer = schemas[kind].array().max(10000);
-                      if (
-                        typeof parsed !== "object" ||
-                        parsed === null ||
-                        !("version" in parsed) ||
-                        parsed.version !== 1 ||
-                        !("product" in parsed) ||
-                        parsed.product !== product.id ||
-                        !("records" in parsed)
-                      )
-                        throw new Error(
-                          "Choose an export from this application.",
-                        );
-                      const loaded = outer.parse(parsed.records);
-                      if (
-                        new Set(loaded.map((item) => item.id)).size !==
-                        loaded.length
-                      )
-                        throw new Error("The file contains duplicate IDs.");
+                      const loaded = parseWorkspaceBackup<WorkspaceRecord>(
+                        parsed,
+                        schemas[kind],
+                      );
                       setImported(loaded);
                     } catch (error) {
                       setError(message(error));

@@ -1,10 +1,10 @@
 {
-  "name": "taskbox-workspace",
+  "name": "task-workspace",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/dev.mjs",
+    "dev": "node scripts/start-development.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -12,10 +12,11 @@
     "test": "vitest run",
     "test:e2e": "playwright test -c playwright.connected.config.ts",
     "dev:demo": "vite --mode demo",
-    "start": "node scripts/dev.mjs",
+    "start": "node scripts/start-development.mjs",
     "build:connected": "tsc --noEmit && vite build",
     "check": "npm run typecheck && npm run lint",
-    "test:api": "api/.venv/bin/python api/scripts/with_local_postgres.py --temporary -- manage.py test workspace --verbosity 1"
+    "test:api": "api/.venv/bin/python api/scripts/local_postgres.py --temporary -- manage.py test workspace --verbosity 1",
+    "test:runner": "api/.venv/bin/python api/scripts/check_runner_cleanup.py"
   },
   "dependencies": {
     "@daypicker/react": "10.0.2",
@@ -54,5 +55,14 @@
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "engines": {
     "node": ">=22.13.0 <25"
-  }
+  },
+  "description": "A considered space to plan, prioritise and finish your next important thing.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bibhu-3214/task-workspace.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bibhu-3214/task-workspace/issues"
+  },
+  "homepage": "https://github.com/bibhu-3214/task-workspace#readme"
 }

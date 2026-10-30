@@ -10,7 +10,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ImproperlyConfigured
 from django.test import Client, TestCase, override_settings
 
-from scripts.local_login import ensure_local_login
+from scripts.local_credentials import ensure_local_credentials
 from workspace.models import Workspace
 
 
@@ -31,8 +31,8 @@ class LocalLoginTests(TestCase):
     def test_generated_login_is_private_reusable_and_can_authenticate(self):
         other = User.objects.create_user("existing@example.test", password="KeepThisPassword#4827")
         original = other.password
-        credentials = ensure_local_login()
-        self.assertEqual(ensure_local_login(), credentials)
+        credentials = ensure_local_credentials()
+        self.assertEqual(ensure_local_credentials(), credentials)
         self.assertEqual(User.objects.count(), 2)
         owner = User.objects.get(pk=credentials["userId"])
         self.assertTrue(owner.check_password(credentials["password"]))
@@ -65,38 +65,38 @@ class LocalLoginTests(TestCase):
                 self.subTest(module=module, debug=debug),
                 override_settings(SETTINGS_MODULE=module, DEBUG=debug),
             ):
-                self.assertIsNone(ensure_local_login())
+                self.assertIsNone(ensure_local_credentials())
         with patch.dict(os.environ, {"WORKSPACE_EPHEMERAL": "1"}):
-            self.assertIsNone(ensure_local_login())
+            self.assertIsNone(ensure_local_credentials())
         with patch.dict(settings.DATABASES["default"], {"HOST": "db.example.test"}):
-            self.assertIsNone(ensure_local_login())
+            self.assertIsNone(ensure_local_credentials())
         with patch.dict(settings.DATABASES["default"], {"ENGINE": "django.db.backends.sqlite3"}):
-            self.assertIsNone(ensure_local_login())
+            self.assertIsNone(ensure_local_credentials())
         self.assertFalse(User.objects.exists())
         self.assertFalse((settings.BASE_DIR / ".local").exists())
 
     def test_restart_preserves_changed_password_and_workspace(self):
-        credentials = ensure_local_login()
+        credentials = ensure_local_credentials()
         owner = User.objects.get(pk=credentials["userId"])
         owner.set_password("ChangedLocally#4827")
         owner.save(update_fields=["password"])
         Workspace.objects.filter(owner=owner).update(revision=7)
-        ensure_local_login()
+        ensure_local_credentials()
         owner.refresh_from_db()
         self.assertTrue(owner.check_password("ChangedLocally#4827"))
         self.assertEqual(Workspace.objects.get(owner=owner).revision, 7)
 
     def test_removed_local_account_is_not_replaced_silently(self):
-        credentials = ensure_local_login()
+        credentials = ensure_local_credentials()
         User.objects.get(pk=credentials["userId"]).delete()
         with self.assertRaises(ImproperlyConfigured):
-            ensure_local_login()
+            ensure_local_credentials()
         self.assertFalse(User.objects.exists())
 
     def test_existing_email_is_not_taken_over(self):
         email = "local.owner@" + settings.PRODUCT["id"] + ".test"
         other = User.objects.create_user(email, email=email, password="PreserveThis#4827")
-        credentials = ensure_local_login()
+        credentials = ensure_local_credentials()
         self.assertNotEqual(credentials["email"], email)
         self.assertNotEqual(credentials["userId"], other.pk)
         other.refresh_from_db()

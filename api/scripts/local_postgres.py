@@ -31,6 +31,7 @@ def main():
         raise SystemExit(128 + signum)
 
     signal.signal(signal.SIGTERM, stop_on_termination)
+    signal.signal(signal.SIGINT, stop_on_termination)
     try:
         import embedded_postgres
     except ImportError:
@@ -79,10 +80,25 @@ def main():
                 env["DJANGO_SETTINGS_MODULE"] = (
                     "config.settings.test" if args.temporary else "config.settings.development"
                 )
-                result = subprocess.run([sys.executable, *command], cwd=root, env=env, check=False)
-                return result.returncode
+                child = subprocess.Popen(
+                    [sys.executable, *command], cwd=root, env=env, start_new_session=True
+                )
+                try:
+                    return child.wait()
+                finally:
+                    # A terminated test runner must not wait forever for its server child.
+                    # Finish cleanup even when the caller sends another interrupt.
+                    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                    signal.signal(signal.SIGINT, signal.SIG_IGN)
+                    if child.poll() is None:
+                        os.killpg(child.pid, signal.SIGTERM)
+                        try:
+                            child.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            os.killpg(child.pid, signal.SIGKILL)
+                            child.wait(timeout=5)
             finally:
-                embedded_postgres.pg_ctl(["-w", "stop"], pgdata=data, timeout=30)
+                embedded_postgres.pg_ctl(["-w", "-m", "fast", "stop"], pgdata=data, timeout=15)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,10 @@
-# TaskBox
+# Task Workspace
 
 A considered space to plan, prioritise and finish your next important thing.
 
 React 19 · strict TypeScript · Tailwind CSS 4 · Vite · Django · PostgreSQL.
+
+Repository and local folder: `task-workspace`.
 
 ## Run locally
 
@@ -37,6 +39,7 @@ Appearance has light/dark support. Shared fields, option panels, calendars and d
 npm run check
 npm test
 npm run test:api
+npm run test:runner
 npm run build
 PLAYWRIGHT_CHANNEL=chrome npm run test:e2e
 ```
@@ -45,10 +48,10 @@ The API tests and browser fixtures create disposable PostgreSQL databases. Brows
 
 ## Existing data
 
-The original code remains in Git history and its README is retained in `docs/README-LEGACY.md`. The old external API is not used as an implicit migration source. Existing tokens are not forwarded to a new service. Convert an explicitly supplied legacy JSON array locally:
+The original code remains in Git history and its README is retained in `docs/legacy-project.md`. The old external API is not used as an implicit migration source. Existing tokens are not forwarded to a new service. Convert an explicitly supplied legacy JSON array locally:
 
 ```sh
-node scripts/convert-legacy.mjs old-export.json converted.json
+node scripts/convert-legacy-data.mjs old-export.json converted.json
 ```
 
 Review the output and use the application's Import control. Conversion never overwrites its input or an existing output file. Missing creation timestamps use the conversion time, and unknown film release years stay blank. No import is performed automatically. JSON exports are plaintext; retain them privately. Importing replaces the current account workspace only after confirmation.
@@ -62,3 +65,9 @@ python manage.py migrate --settings=config.settings.production
 ```
 
 Production settings reject missing secrets, wildcard/empty hosts and non-PostgreSQL databases, enable secure cookies and HTTPS/HSTS, and add response security headers. Back up and restore-test PostgreSQL before relying on the service. Hosting, provider/email delivery, operational monitoring, external ingress and recovery drills require their own deployment validation; no public launch is claimed. Publishing source changes does not deploy the application.
+
+## Project naming and compatibility
+
+This project is now **Task Workspace**, with the repository, folder and package named `task-workspace`. The previous repository was `TaskBox-App`. Standard entry/configuration filenames retain their conventional names. TypeScript React components use PascalCase, utility modules use camelCase, Python modules use snake_case, and scripts/docs use descriptive kebab-case.
+
+`product.json` separates the current app identity from its stable storage namespace. Existing account sessions, CSRF cookies and appearance preferences retain their original keys. Previously exported files remain importable through explicit legacy identifiers. The private database, secret and generated local credentials were moved with the project and were not reset. Existing local email addresses remain valid. Newly generated test accounts use the current project name.

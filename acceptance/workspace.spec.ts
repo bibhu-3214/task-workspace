@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import product from "../product.json" with { type: "json" };
 const password = "BrowserOnly#4827";
@@ -225,6 +225,12 @@ for (const [name, width, height] of [
         .parse(raw);
       expect(backup.product).toBe(product.id);
       expect(backup.records.length).toBeGreaterThan(0);
+      const legacyPath = path.replace("-export.json", "-legacy-export.json");
+      await writeFile(
+        legacyPath,
+        JSON.stringify({ ...backup, product: product.legacyProductIds[0] }),
+        { mode: 0o600 },
+      );
       const importInput = page.getByLabel(
         product.kind === "candidate"
           ? "Import candidates JSON"
@@ -235,7 +241,7 @@ for (const [name, width, height] of [
         product.kind === "candidate"
           ? "Replace candidate workspace?"
           : "Replace workspace from export?";
-      await importInput.setInputFiles(path);
+      await importInput.setInputFiles(legacyPath);
       await expect(
         page.getByRole("dialog", { name: importTitle, exact: true }),
       ).toBeVisible();
@@ -245,7 +251,7 @@ for (const [name, width, height] of [
       await expect(
         page.getByRole("dialog", { name: importTitle, exact: true }),
       ).not.toBeVisible();
-      await importInput.setInputFiles(path);
+      await importInput.setInputFiles(legacyPath);
       await page
         .getByRole("dialog", { name: importTitle, exact: true })
         .getByRole("button", {

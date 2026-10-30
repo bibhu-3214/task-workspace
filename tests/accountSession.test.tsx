@@ -8,7 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { z } from "zod";
-import ServiceGate from "../src/platform/ServiceGate";
+import AccountWorkspaceGate from "../src/platform/AccountWorkspaceGate";
 const schema = z.object({ id: z.string(), title: z.string() });
 const ownerA = { id: 1, name: "Owner A", email: "owner-a@example.test" },
   ownerB = { id: 2, name: "Owner B", email: "owner-b@example.test" };
@@ -38,7 +38,7 @@ test("a failed account refresh clears the previous private workspace", async () 
     ),
   );
   render(
-    <ServiceGate schema={schema}>
+    <AccountWorkspaceGate schema={schema}>
       {(state) => (
         <div>
           {state.records.map((record) => (
@@ -46,7 +46,7 @@ test("a failed account refresh clears the previous private workspace", async () 
           ))}
         </div>
       )}
-    </ServiceGate>,
+    </AccountWorkspaceGate>,
   );
   await screen.findByText("Secret from owner A");
   changed = true;
@@ -56,9 +56,7 @@ test("a failed account refresh clears the previous private workspace", async () 
   expect(
     screen.queryByRole("button", { name: "Sign out" }),
   ).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "Sign in" }),
-  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 
 test("StrictMode shares initial session restoration instead of racing CSRF cookies", async () => {
@@ -70,9 +68,9 @@ test("StrictMode shares initial session restoration instead of racing CSRF cooki
   vi.stubGlobal("fetch", fetcher);
   render(
     <StrictMode>
-      <ServiceGate schema={schema}>
+      <AccountWorkspaceGate schema={schema}>
         {() => <p>Private workspace ready</p>}
-      </ServiceGate>
+      </AccountWorkspaceGate>
     </StrictMode>,
   );
   await screen.findByText("Private workspace ready");

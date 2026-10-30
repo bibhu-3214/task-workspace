@@ -1,4 +1,4 @@
-# TaskBox modernization
+# Task Workspace modernization
 
 Scope: preserve the original tasks workflow while adding strict TypeScript, Tailwind CSS 4, accessible forms and dialogs, real Django sessions and owner-scoped PostgreSQL persistence.
 
@@ -23,8 +23,8 @@ New accounts start empty. Existing external-service records and credentials are 
 | Check | Result |
 | --- | --- |
 | TypeScript strict checks and ESLint with zero warnings | Passed |
-| Frontend/unit and legacy conversion checks | 10 passed |
-| Django tests against disposable PostgreSQL, including concurrent writes | 18 passed |
+| Frontend/unit and legacy conversion checks | 13 passed |
+| Django tests against disposable PostgreSQL, including concurrent writes | 19 passed |
 | Connected Chrome workflows at desktop, tablet and phone sizes | 3 passed |
 | Production frontend build | Passed |
 | Python Ruff checks and formatting | Passed |
@@ -35,13 +35,13 @@ New accounts start empty. Existing external-service records and credentials are 
 
 Connected browser coverage includes registration, saved records after reload, domain actions, unsaved-edit confirmation, JSON export, cancelled/confirmed import, light/dark appearance, sign-out and direct sign-in again. Task/order calendar selection is exercised. Screens were inspected at desktop and phone sizes. Browser fixtures are fictional and their PostgreSQL clusters are disposable.
 
-The five projects total 74 frontend/unit checks, 90 PostgreSQL checks and 22 browser scenarios (including Forma's seven original demo regressions). Local startup was checked for all five. These are local results; consult GitHub Actions for the current remote CI status.
+Local startup was checked for this app. The counts above include account, persistence, conversion and naming-compatibility regressions. These are local results; consult GitHub Actions for the current remote CI status.
 
 ## Run and review
 
 From this repository folder, use `npm run dev` (or `npm start`) and open the local URL listed above. `Ctrl+C` stops this project's services. Dependencies are already installed in this checkout. For a fresh clone use `yarn install --frozen-lockfile`; Node 22.13+ under 25 and Python 3.13 are required. The launcher creates an isolated Python environment when absent; this checkout's independent environments were installed and validated explicitly.
 
-Development uses `feat/product-modernization`. Publication targets `master`, except Customer Dashboard, which uses `main`. The original source remains recoverable in Git history. Publishing source changes does not deploy the application.
+Development uses `feat/product-modernization`. Publication targets `master`, except Customer Insights, which uses `main`. The original source remains recoverable in Git history. Publishing source changes does not deploy the application.
 
 ## Remaining external setup
 
@@ -55,3 +55,9 @@ The persistent private development launcher now seeds one non-admin local owner 
 Seeding requires the development settings module, debug mode, PostgreSQL over a private Unix socket and the persistent-local marker. Production, remote-database and ephemeral-test environments skip it. Vite injects prefill only when the local launcher explicitly enables it during development serving; production builds and previews receive no saved credentials. Browser prefill additionally requires a loopback hostname.
 
 Observed checks: two new frontend regressions and five new database regressions pass per app. Real Chrome checks against each persistent `npm run dev` stack passed editable prefill, masked password, blank signup, actual sign-in, reload and sign-out. Builds succeeded with the local-prefill flag deliberately set, and all generated production files were scanned to confirm that neither saved email nor saved password was included. Credential-file permissions and reuse were verified without printing passwords.
+
+## Naming standardization
+
+Current name: **Task Workspace** (`task-workspace`). Previous repository: `TaskBox-App`. Project-specific components, startup scripts, Python runners, tests and docs now use descriptive names; all imports, package commands, HTML titles and source links follow the new paths. Stable persistence identifiers intentionally retain compatibility with existing cookies, appearance settings, private local credentials and JSON exports. Database models and migration histories are unchanged.
+
+Naming validation: strict TypeScript/lint and production builds passed; 13 frontend tests and 19 PostgreSQL tests passed per renamed app. Persistent local accounts still authenticate using their unchanged private credentials. Legacy exports are imported in desktop/tablet/phone acceptance coverage. A dedicated `npm run test:runner` check now verifies both SIGTERM and SIGINT stop the runner's disposable PostgreSQL server and remove its temporary database. Playwright uses explicit graceful shutdown for the API test stack.

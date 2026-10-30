@@ -23,6 +23,7 @@ jobs:
       - run: yarn check
       - run: yarn test
       - run: yarn test:api
+      - run: yarn test:runner
       - run: yarn build
       - run: yarn playwright install --with-deps chromium
       - run: yarn test:e2e

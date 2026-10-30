@@ -1,15 +1,17 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { z } from "zod";
-import ServiceGate from "../src/platform/ServiceGate";
+import AccountWorkspaceGate from "../src/platform/AccountWorkspaceGate";
 import {
-  getLocalLogin,
-  localLoginForEnvironment,
-} from "../src/platform/localLogin";
+  getLocalCredentials,
+  localCredentialsForEnvironment,
+} from "../src/platform/localCredentials";
 
-vi.mock("../src/platform/localLogin", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/platform/localLogin")>()),
-  getLocalLogin: vi.fn(),
+vi.mock("../src/platform/localCredentials", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/platform/localCredentials")
+  >()),
+  getLocalCredentials: vi.fn(),
 }));
 const local = {
   email: "local.owner@fixture.test",
@@ -21,18 +23,24 @@ afterEach(() => {
 });
 
 test("local credentials require development, a loopback browser and valid fields", () => {
-  expect(localLoginForEnvironment(local, true, "127.0.0.1")).toEqual(local);
-  expect(localLoginForEnvironment(local, true, "localhost")).toEqual(local);
-  expect(localLoginForEnvironment(local, false, "localhost")).toBeNull();
-  expect(localLoginForEnvironment(local, true, "host.example.test")).toBeNull();
+  expect(localCredentialsForEnvironment(local, true, "127.0.0.1")).toEqual(
+    local,
+  );
+  expect(localCredentialsForEnvironment(local, true, "localhost")).toEqual(
+    local,
+  );
+  expect(localCredentialsForEnvironment(local, false, "localhost")).toBeNull();
   expect(
-    localLoginForEnvironment({ email: local.email }, true, "localhost"),
+    localCredentialsForEnvironment(local, true, "host.example.test"),
   ).toBeNull();
-  expect(localLoginForEnvironment(null, true, "localhost")).toBeNull();
+  expect(
+    localCredentialsForEnvironment({ email: local.email }, true, "localhost"),
+  ).toBeNull();
+  expect(localCredentialsForEnvironment(null, true, "localhost")).toBeNull();
 });
 
 test("local login is prefilled and editable, while signup starts blank", async () => {
-  vi.mocked(getLocalLogin).mockReturnValue(local);
+  vi.mocked(getLocalCredentials).mockReturnValue(local);
   vi.stubGlobal(
     "fetch",
     vi.fn(
@@ -43,9 +51,9 @@ test("local login is prefilled and editable, while signup starts blank", async (
     ),
   );
   render(
-    <ServiceGate schema={z.object({ id: z.string() })}>
+    <AccountWorkspaceGate schema={z.object({ id: z.string() })}>
       {() => <p>Workspace</p>}
-    </ServiceGate>,
+    </AccountWorkspaceGate>,
   );
   const email = await screen.findByLabelText("Email address", { exact: true });
   const password = screen.getByLabelText("Password", { exact: true });

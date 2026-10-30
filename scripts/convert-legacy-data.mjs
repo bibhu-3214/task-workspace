@@ -4,7 +4,7 @@ import product from "../product.json" with { type: "json" };
 const [source, destination] = process.argv.slice(2);
 if (!source || !destination)
   throw new Error(
-    "Usage: node scripts/convert-legacy.mjs input.json output.json",
+    "Usage: node scripts/convert-legacy-data.mjs input.json output.json",
   );
 const raw = JSON.parse(readFileSync(source, "utf8"));
 const original = Array.isArray(raw)

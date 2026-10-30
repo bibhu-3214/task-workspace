@@ -10,7 +10,7 @@ const sessionSchema = z.object({
   user: userSchema.nullable(),
   csrfToken: z.string(),
 });
-export const accountChannel = product.id + ".account-session";
+export const accountChannel = product.storageNamespace + ".account-session";
 let csrf = "";
 let restoring: Promise<Account | null> | undefined;
 function announceSessionChange() {

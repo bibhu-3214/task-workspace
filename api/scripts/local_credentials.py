@@ -12,7 +12,7 @@ from django.db import transaction
 from workspace.models import Workspace
 
 
-def ensure_local_login():
+def ensure_local_credentials():
     database = settings.DATABASES["default"]
     host = database.get("HOST") or database.get("OPTIONS", {}).get("host", "")
     if (

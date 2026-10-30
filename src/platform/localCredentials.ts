@@ -5,7 +5,7 @@ const credentials = z.object({
   password: z.string().min(12).max(128),
 });
 
-export function localLoginForEnvironment(
+export function localCredentialsForEnvironment(
   configured: unknown,
   development: boolean,
   hostname: string,
@@ -16,9 +16,9 @@ export function localLoginForEnvironment(
   return parsed.success ? parsed.data : null;
 }
 
-export function getLocalLogin() {
-  return localLoginForEnvironment(
-    typeof __LOCAL_LOGIN__ === "undefined" ? null : __LOCAL_LOGIN__,
+export function getLocalCredentials() {
+  return localCredentialsForEnvironment(
+    typeof __LOCAL_CREDENTIALS__ === "undefined" ? null : __LOCAL_CREDENTIALS__,
     import.meta.env.DEV,
     window.location.hostname,
   );

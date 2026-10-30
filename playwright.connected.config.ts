@@ -14,10 +14,11 @@ export default defineConfig({
   webServer: [
     {
       command:
-        "api/.venv/bin/python api/scripts/with_local_postgres.py --temporary -- -m scripts.acceptance",
+        "api/.venv/bin/python api/scripts/local_postgres.py --temporary -- -m scripts.run_acceptance",
       url: "http://127.0.0.1:" + product.apiPort + "/api/health",
       timeout: 60000,
       reuseExistingServer: false,
+      gracefulShutdown: { signal: "SIGTERM", timeout: 15000 },
     },
     {
       command:

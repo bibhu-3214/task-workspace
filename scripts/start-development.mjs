@@ -23,7 +23,7 @@ if (!existsSync(python)) {
 }
 const api = spawn(
   python,
-  ["api/scripts/with_local_postgres.py", "--", "-m", "scripts.serve"],
+  ["api/scripts/local_postgres.py", "--", "-m", "scripts.run_development"],
   {
     cwd: root,
     stdio: "inherit",
@@ -74,7 +74,7 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (!ready) throw new Error("The local API did not become ready.");
-  process.env.WORKSPACE_LOCAL_LOGIN = "1";
+  process.env.WORKSPACE_LOCAL_CREDENTIALS = "1";
   const { createServer } = await import("vite");
   server = await createServer({
     root,

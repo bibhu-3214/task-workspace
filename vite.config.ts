@@ -9,21 +9,21 @@ export default defineConfig(({ command, mode, isPreview }) => {
   const loginFile = fileURLToPath(
     new URL("./api/.local/local-login.json", import.meta.url),
   );
-  let localLogin: { email: string; password: string } | null = null;
+  let localCredentials: { email: string; password: string } | null = null;
   if (
     command === "serve" &&
     !isPreview &&
     mode === "development" &&
-    process.env.WORKSPACE_LOCAL_LOGIN === "1" &&
+    process.env.WORKSPACE_LOCAL_CREDENTIALS === "1" &&
     existsSync(loginFile)
   ) {
     const raw: unknown = JSON.parse(readFileSync(loginFile, "utf8"));
-    localLogin = z
+    localCredentials = z
       .object({ email: z.email(), password: z.string().min(12).max(128) })
       .parse(raw);
   }
   return {
-    define: { __LOCAL_LOGIN__: JSON.stringify(localLogin) },
+    define: { __LOCAL_CREDENTIALS__: JSON.stringify(localCredentials) },
     plugins: [tailwindcss(), react()],
     server: {
       host: "127.0.0.1",
