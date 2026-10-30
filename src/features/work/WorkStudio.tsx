@@ -288,8 +288,8 @@ export default function WorkStudio({
         <div className="mt-10 hidden border-t border-line pt-5 text-xs leading-6 text-muted lg:block">
           <strong className="block text-ink">Your private workspace</strong>
           <p className="mt-2">
-            Tasks and notes stay together. Source Notes Workspace accounts
-            remain separate until you explicitly import their exports.
+            Tasks and notes stay together. Import a saved Notes Workspace
+            JSON export to bring existing notes into your projects.
           </p>
         </div>
       </aside>
