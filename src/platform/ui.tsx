@@ -20,7 +20,7 @@ export function Button({
     <button
       type="button"
       {...props}
-      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50 ${tone === "primary" ? "bg-primary text-white dark:text-slate-950 shadow-sm hover:bg-primary/90" : tone === "danger" ? "bg-danger/10 text-danger hover:bg-danger/20" : "bg-soft text-ink hover:bg-line"} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-[background-color,box-shadow,transform] motion-safe:active:scale-[.98] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50 ${tone === "primary" ? "bg-primary text-white dark:text-slate-950 shadow-[0_4px_12px_-5px_var(--primary)] hover:brightness-95" : tone === "danger" ? "bg-danger/10 text-danger hover:bg-danger/20" : "bg-soft text-ink hover:bg-line"} ${className}`}
     >
       {children}
     </button>
@@ -79,7 +79,7 @@ export function Dropdown({
         aria-label={label}
         className={
           controlClass +
-          " inline-flex items-center justify-between gap-3 text-left"
+          " inline-flex items-center justify-between gap-3 text-left whitespace-nowrap [&>span:first-child]:min-w-0 [&>span:first-child]:flex-1 [&>span:first-child]:truncate [&>span:last-child]:shrink-0"
         }
       >
         <Select.Value placeholder={"Choose " + label.toLowerCase()} />

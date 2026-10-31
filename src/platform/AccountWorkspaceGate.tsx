@@ -1,3 +1,5 @@
+import { clearTabDrafts } from "./useTabDraft";
+import WorkspaceLoading from "./WorkspaceLoading";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { z } from "zod";
@@ -94,14 +96,20 @@ export default function AccountWorkspaceGate<T>({
       if (typeof window.BroadcastChannel === "function") {
         channel = new window.BroadcastChannel(accountChannel);
         channel.onmessage = (event: MessageEvent<unknown>) => {
-          if (event.data === "changed") void initialLoad.current();
+          if (event.data === "changed") {
+            clearTabDrafts();
+            void initialLoad.current();
+          }
         };
       }
     } catch {
       /* Reconnect still verifies sessions when channels are unavailable. */
     }
     const storageChanged = (event: StorageEvent) => {
-      if (event.key === accountChannel) void initialLoad.current();
+      if (event.key === accountChannel) {
+        clearTabDrafts();
+        void initialLoad.current();
+      }
     };
     window.addEventListener("storage", storageChanged);
     window.addEventListener("workspace:expired", expired);
@@ -153,15 +161,7 @@ export default function AccountWorkspaceGate<T>({
       setBusy(false);
     }
   }
-  if (restoring)
-    return (
-      <main className="grid min-h-screen place-items-center bg-canvas p-6 text-muted">
-        <div role="status" className="text-center">
-          <RefreshCw className="mx-auto mb-4 animate-spin motion-reduce:animate-none" />
-          Opening {product.title}…
-        </div>
-      </main>
-    );
+  if (restoring) return <WorkspaceLoading />;
   if (!account)
     return (
       <main className="grid min-h-screen bg-canvas px-5 py-12 text-ink lg:place-items-center">
@@ -304,7 +304,10 @@ export default function AccountWorkspaceGate<T>({
     );
   return (
     <>
-      <section aria-label="Account controls" className="platform-session sticky top-0 z-40 flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2 text-xs text-muted sm:px-7">
+      <section
+        aria-label="Account controls"
+        className="platform-session sticky top-0 z-40 flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2 text-xs text-muted sm:px-7"
+      >
         <span className="flex items-center gap-2">
           <ShieldCheck size={14} className="text-success" />
           <strong className="font-semibold text-ink">{account.name}</strong> ·

@@ -1,3 +1,12 @@
+import TaskFocusTools from "./TaskFocusTools";
+import { inFocus, taskFocus, type TaskFocus } from "./focus";
+import DraftNotice from "../../platform/DraftNotice";
+import {
+  useTabDraft,
+  useBeforeUnload,
+  type TabDraft,
+} from "../../platform/useTabDraft";
+import EmptyState from "../../platform/EmptyState";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -62,6 +71,23 @@ export default function WorkStudio({
 }: {
   state: WorkspaceState<WorkRecord>;
 }) {
+  const drafts = useTabDraft(
+    String(state.account.id),
+    [
+      "name",
+      "title",
+      "description",
+      "body",
+      "tag",
+      "projectId",
+      "priority",
+      "status",
+      "dueDate",
+    ],
+    ["task", "note", "project"],
+  );
+  const [recovered, setRecovered] = useState<TabDraft | null>(null);
+  const editorForm = useRef<HTMLFormElement>(null);
   const [params, setParams] = useSearchParams();
   const view =
     params.get("view") === "notes"
@@ -69,6 +95,25 @@ export default function WorkStudio({
       : params.get("view") === "projects"
         ? "projects"
         : "board";
+  const focus = taskFocus(params.get("focus"));
+  const [day, setDay] = useState(localToday);
+  useEffect(() => {
+    const refresh = () => setDay(localToday());
+    const timer = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+  function changeFocus(next: TaskFocus) {
+    setParams((previous) => {
+      const query = new URLSearchParams(previous);
+      if (next === "all") query.delete("focus");
+      else query.set("focus", next);
+      return query;
+    });
+  }
   const main = useRef<HTMLElement>(null);
   useEffect(() => {
     const titles = {
@@ -116,7 +161,21 @@ export default function WorkStudio({
     )
       .toLowerCase()
       .includes(query.toLowerCase().trim());
-  const shownTasks = tasks.filter(matches),
+  const shownProjects = projects.filter(
+    (item) =>
+      (project === "all" || project === "inbox" || item.id === project) &&
+      (item.name + " " + item.description)
+        .toLowerCase()
+        .includes(query.toLowerCase().trim()),
+  );
+  const clearFilters = () => {
+    setQuery("");
+    setProject("all");
+    changeFocus("all");
+  };
+  const shownTasks = tasks.filter(
+      (task) => matches(task) && inFocus(task, focus, day),
+    ),
     shownNotes = notes
       .filter(matches)
       .sort(
@@ -130,9 +189,66 @@ export default function WorkStudio({
     setError("");
   }
   function open(next: Editor) {
+    if (drafts.draft) {
+      setError(
+        "Recover or discard your unfinished draft before starting another entry.",
+      );
+      return;
+    }
+    setRecovered(null);
     setEditor(next);
     setDirty(false);
     setError("");
+  }
+  useBeforeUnload(dirty);
+  function changed() {
+    setDirty(true);
+    // Radix updates its hidden form controls after the value callback.
+    queueMicrotask(() => {
+      if (editorForm.current && editor)
+        drafts.capture(editorForm.current, {
+          kind: editor.kind,
+          ...(editor.record
+            ? {
+                recordId: editor.record.id,
+                base: JSON.stringify(editor.record),
+              }
+            : {}),
+        });
+    });
+  }
+  function recoverDraft() {
+    const draft = drafts.draft;
+    if (!draft) return;
+    let record = draft.recordId
+      ? state.records.find((item) => item.id === draft.recordId)
+      : undefined;
+    const stale = Boolean(
+      draft.recordId && (!record || JSON.stringify(record) !== draft.base),
+    );
+    if (stale) record = undefined;
+    if (draft.kind === "task" && (!record || isTask(record)))
+      setEditor({ kind: "task", record });
+    else if (draft.kind === "note" && (!record || isNote(record)))
+      setEditor({ kind: "note", record });
+    else if (draft.kind === "project" && (!record || isProject(record)))
+      setEditor({ kind: "project", record });
+    else return;
+    const values = { ...draft.values };
+    if (
+      values.projectId &&
+      values.projectId !== "inbox" &&
+      !projects.some((project) => project.id === values.projectId)
+    ) {
+      values.projectId = "inbox";
+    }
+    setRecovered({ ...draft, values });
+    setDirty(true);
+    setError(
+      stale
+        ? "The original entry changed or was removed. This draft is recovered as a new entry; review it before saving."
+        : "",
+    );
   }
   function close() {
     if (state.busy) return;
@@ -206,6 +322,8 @@ export default function WorkStudio({
                 : "Task added.",
         )
       ) {
+        drafts.clear();
+        setRecovered(null);
         setEditor(null);
         setDirty(false);
       }
@@ -274,7 +392,7 @@ export default function WorkStudio({
         </p>
         <nav
           aria-label="Workspace navigation"
-          className="mt-6 flex gap-2 overflow-x-auto lg:grid lg:gap-2"
+          className="mt-6 grid grid-cols-3 gap-1 lg:grid-cols-1 lg:gap-2"
         >
           {[
             ["board", "Task board", ClipboardList],
@@ -287,11 +405,19 @@ export default function WorkStudio({
                 key={String(key)}
                 type="button"
                 aria-current={view === key ? "page" : undefined}
+                aria-label={String(label)}
                 onClick={() => navigate(String(key))}
-                className={`flex min-h-11 shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium ${view === key ? "bg-soft text-primary" : "text-muted hover:bg-soft"}`}
+                className={`flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-xl px-2 py-3 text-xs font-medium lg:justify-start lg:gap-3 lg:px-4 lg:text-sm ${view === key ? "bg-soft text-primary" : "text-muted hover:bg-soft"}`}
               >
-                <Component size={18} />
-                {String(label)}
+                <Component size={18} aria-hidden="true" className="shrink-0" />
+                {key === "notes" ? (
+                  <>
+                    <span className="lg:hidden">Notes</span>
+                    <span className="hidden lg:inline">Project notes</span>
+                  </>
+                ) : (
+                  <span>{String(label)}</span>
+                )}
               </button>
             );
           })}
@@ -310,6 +436,10 @@ export default function WorkStudio({
         tabIndex={-1}
         className="mx-auto max-w-[1700px] p-4 outline-none sm:p-8 lg:ml-64 lg:p-10"
       >
+        {drafts.draft && !editor && (
+          <DraftNotice onRestore={recoverDraft} onDiscard={drafts.clear} />
+        )}
+
         <header className="flex flex-wrap items-start justify-between gap-5">
           <div>
             <p className="text-[10px] font-semibold tracking-[.18em] text-primary uppercase">
@@ -403,7 +533,11 @@ export default function WorkStudio({
               type="search"
               aria-label="Search work"
               placeholder={
-                view === "notes" ? "Search notes and tags" : "Search tasks"
+                view === "notes"
+                  ? "Search notes and tags"
+                  : view === "projects"
+                    ? "Search projects"
+                    : "Search tasks"
               }
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -413,11 +547,15 @@ export default function WorkStudio({
           <div className="min-w-44">
             <Dropdown
               label="Filter by project"
-              value={project}
+              value={
+                view === "projects" && project === "inbox" ? "all" : project
+              }
               onChange={setProject}
               options={[
                 { value: "all", label: "All projects" },
-                ...projectOptions,
+                ...(view === "projects"
+                  ? projectOptions.filter((item) => item.value !== "inbox")
+                  : projectOptions),
               ]}
             />
           </div>
@@ -463,178 +601,310 @@ export default function WorkStudio({
         </section>
         {view === "board" && (
           <>
-            <div className="mt-6 flex flex-wrap gap-4 text-xs text-muted">
-              <span>{tasks.length} tasks</span>
-              <span>
-                {tasks.filter((task) => task.status === "Done").length}{" "}
-                completed
-              </span>
-              <span>{notes.length} project notes</span>
-              <span>{projects.length} projects</span>
-            </div>
-            <div className="mt-5 grid gap-5 xl:grid-cols-3">
-              {statuses.map((status) => (
-                <section
-                  key={status}
-                  aria-label={status + " tasks"}
-                  className="min-w-0 rounded-2xl border border-line bg-surface/70 p-4"
+            <TaskFocusTools
+              owner={String(state.account.id)}
+              focus={focus}
+              onFocus={changeFocus}
+              counts={{
+                all: tasks.filter(matches).length,
+                today: tasks.filter(
+                  (task) => matches(task) && inFocus(task, "today", day),
+                ).length,
+                overdue: tasks.filter(
+                  (task) => matches(task) && inFocus(task, "overdue", day),
+                ).length,
+              }}
+              busy={state.busy}
+              onCreate={async (title) => {
+                try {
+                  const next = taskSchema.parse({
+                    ...stampRecord(),
+                    recordType: "task",
+                    title,
+                    description: "",
+                    projectId:
+                      project === "all" || project === "inbox" ? "" : project,
+                    priority: "Normal",
+                    status: "To do",
+                    dueDate: focus === "all" ? "" : localToday(),
+                  });
+                  const saved = await save(
+                    [...state.records, next],
+                    "Task added.",
+                  );
+                  if (saved) {
+                    setQuery("");
+                    if (focus === "overdue") changeFocus("today");
+                  }
+                  return saved;
+                } catch (failure) {
+                  setError(message(failure));
+                  return false;
+                }
+              }}
+            />
+
+            <section
+              aria-label="Workspace summary"
+              className="mt-6 grid grid-cols-2 gap-3 xl:grid-cols-4"
+            >
+              {[
+                {
+                  label: "Tasks",
+                  value: tasks.length,
+                  detail: "Across your workspace",
+                  icon: ClipboardList,
+                },
+                {
+                  label: "Completed",
+                  value: tasks.filter((task) => task.status === "Done").length,
+                  detail: "Progress you can see",
+                  icon: Check,
+                },
+                {
+                  label: "Project notes",
+                  value: notes.length,
+                  detail: "Context kept close",
+                  icon: BookOpen,
+                },
+                {
+                  label: "Projects",
+                  value: projects.length,
+                  detail: "Focused spaces for work",
+                  icon: FolderKanban,
+                },
+              ].map(({ label, value, detail, icon: Icon }) => (
+                <article
+                  key={label}
+                  className="rounded-2xl border border-line bg-surface p-4 shadow-[0_4px_18px_-12px_#17203320] sm:p-5"
                 >
-                  <header className="mb-4 flex items-center justify-between">
-                    <h2 className="flex items-center gap-2 font-semibold">
-                      <span
-                        className={`size-2 rounded-full ${status === "Done" ? "bg-success" : status === "In progress" ? "bg-primary" : "bg-muted"}`}
-                      />
-                      {status}
-                    </h2>
-                    <span className="rounded-md bg-soft px-2 py-1 text-xs text-muted">
-                      {
-                        shownTasks.filter((task) => task.status === status)
-                          .length
-                      }
-                    </span>
-                  </header>
-                  <div className="grid gap-3">
-                    {shownTasks
-                      .filter((task) => task.status === status)
-                      .map((task) => (
-                        <article
-                          key={task.id}
-                          className="rounded-xl border border-line bg-surface p-4 shadow-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span
-                              className={`rounded-md px-2 py-1 text-[10px] font-semibold ${task.priority === "High" ? "bg-danger/10 text-danger" : "bg-soft text-muted"}`}
-                            >
-                              {task.priority} priority
-                            </span>
-                            <span className="flex">
-                              <Button
-                                tone="quiet"
-                                className="min-h-8 p-2"
-                                aria-label={"Edit " + task.title}
-                                disabled={state.busy}
-                                onClick={() =>
-                                  open({ kind: "task", record: task })
-                                }
-                              >
-                                <Pencil size={14} />
-                              </Button>
-                              <Button
-                                tone="quiet"
-                                className="ml-1 min-h-8 p-2"
-                                aria-label={"Delete " + task.title}
-                                disabled={state.busy}
-                                onClick={() => setRemove(task)}
-                              >
-                                <Trash2 size={14} />
-                              </Button>
-                            </span>
-                          </div>
-                          <h3 className="mt-3 font-semibold leading-6">
-                            {task.title}
-                          </h3>
-                          {task.description && (
-                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
-                              {task.description}
-                            </p>
-                          )}
-                          <p className="mt-4 text-[11px] text-muted">
-                            {projectName(task.projectId)}
-                          </p>
-                          {task.dueDate && (
-                            <p
-                              className={`mt-2 text-xs ${task.status !== "Done" && task.dueDate < localToday() ? "text-danger" : "text-muted"}`}
-                            >
-                              Due {task.dueDate}
-                            </p>
-                          )}
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {status !== "Done" && (
-                              <Button
-                                tone="quiet"
-                                className="min-h-9 px-3 py-2 text-xs"
-                                disabled={state.busy}
-                                onClick={() =>
-                                  void save(
-                                    state.records.map((record) =>
-                                      record.id === task.id
-                                        ? {
-                                            ...task,
-                                            status: "Done",
-                                            updatedAt: new Date().toISOString(),
-                                          }
-                                        : record,
-                                    ),
-                                    "Task completed.",
-                                  )
-                                }
-                              >
-                                <Check size={14} />
-                                Mark complete
-                              </Button>
-                            )}
-                            {status === "To do" && (
-                              <Button
-                                tone="quiet"
-                                className="min-h-9 px-3 py-2 text-xs"
-                                disabled={state.busy}
-                                onClick={() =>
-                                  void save(
-                                    state.records.map((record) =>
-                                      record.id === task.id
-                                        ? {
-                                            ...task,
-                                            status: "In progress",
-                                            updatedAt: new Date().toISOString(),
-                                          }
-                                        : record,
-                                    ),
-                                    "Task started.",
-                                  )
-                                }
-                              >
-                                Start task
-                              </Button>
-                            )}
-                            {status === "Done" && (
-                              <Button
-                                tone="quiet"
-                                className="min-h-9 px-3 py-2 text-xs"
-                                disabled={state.busy}
-                                onClick={() =>
-                                  void save(
-                                    state.records.map((record) =>
-                                      record.id === task.id
-                                        ? {
-                                            ...task,
-                                            status: "To do",
-                                            updatedAt: new Date().toISOString(),
-                                          }
-                                        : record,
-                                    ),
-                                    "Task reopened.",
-                                  )
-                                }
-                              >
-                                Reopen task
-                              </Button>
-                            )}
-                          </div>
-                        </article>
-                      ))}
-                    {!shownTasks.some((task) => task.status === status) && (
-                      <p className="rounded-xl border border-dashed border-line p-6 text-center text-xs leading-6 text-muted">
-                        {status === "To do"
-                          ? "A little breathing room. Add your next task."
-                          : status === "In progress"
-                            ? "Start a task when you are ready to focus."
-                            : "Your completed work will appear here."}
-                      </p>
-                    )}
+                  <div className="flex items-center justify-between gap-2 text-xs font-medium text-muted">
+                    <span>{label}</span>
+                    <Icon
+                      size={17}
+                      aria-hidden="true"
+                      className="text-primary"
+                    />
                   </div>
-                </section>
+                  <strong className="mt-4 block text-3xl font-semibold tracking-tight tabular-nums">
+                    {value}
+                  </strong>
+                  <p className="mt-2 text-[11px] leading-5 text-muted">
+                    {detail}
+                  </p>
+                </article>
               ))}
-            </div>
+            </section>
+            {!shownTasks.length && (
+              <div className="mt-6">
+                <EmptyState
+                  icon={ClipboardList}
+                  eyebrow={
+                    tasks.length
+                      ? "A clearer view"
+                      : "Your next chapter starts small"
+                  }
+                  title={
+                    tasks.length
+                      ? focus === "today"
+                        ? "Nothing due today in this view."
+                        : focus === "overdue"
+                          ? "No overdue tasks in this view."
+                          : "No tasks match this view."
+                      : "Start with one meaningful task."
+                  }
+                  description={
+                    tasks.length
+                      ? "Try another search, project or date view to bring your work back into view."
+                      : "Capture one thing to do, move it into progress, and enjoy seeing it done. Projects and notes can grow around it."
+                  }
+                >
+                  <Button
+                    onClick={() =>
+                      tasks.length ? clearFilters() : open({ kind: "task" })
+                    }
+                  >
+                    {tasks.length ? "Clear filters" : "Add your first task"}
+                  </Button>
+                  {!tasks.length && (
+                    <Button
+                      tone="quiet"
+                      onClick={() => open({ kind: "project" })}
+                    >
+                      Create a project
+                    </Button>
+                  )}
+                </EmptyState>
+              </div>
+            )}
+            {shownTasks.length > 0 && (
+              <div className="mt-5 grid gap-5 xl:grid-cols-3">
+                {statuses.map((status) => (
+                  <section
+                    key={status}
+                    aria-label={status + " tasks"}
+                    className="min-w-0 rounded-2xl border border-line bg-surface/70 p-4"
+                  >
+                    <header className="mb-4 flex items-center justify-between">
+                      <h2 className="flex items-center gap-2 font-semibold">
+                        <span
+                          className={`size-2 rounded-full ${status === "Done" ? "bg-success" : status === "In progress" ? "bg-primary" : "bg-muted"}`}
+                        />
+                        {status}
+                      </h2>
+                      <span className="rounded-md bg-soft px-2 py-1 text-xs text-muted">
+                        {
+                          shownTasks.filter((task) => task.status === status)
+                            .length
+                        }
+                      </span>
+                    </header>
+                    <div className="grid gap-3">
+                      {shownTasks
+                        .filter((task) => task.status === status)
+                        .map((task) => (
+                          <article
+                            key={task.id}
+                            className="rounded-xl border border-line bg-surface p-4 shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span
+                                className={`rounded-md px-2 py-1 text-[10px] font-semibold ${task.priority === "High" ? "bg-danger/10 text-danger" : "bg-soft text-muted"}`}
+                              >
+                                {task.priority} priority
+                              </span>
+                              <span className="flex">
+                                <Button
+                                  tone="quiet"
+                                  className="min-h-8 p-2"
+                                  aria-label={"Edit " + task.title}
+                                  disabled={state.busy}
+                                  onClick={() =>
+                                    open({ kind: "task", record: task })
+                                  }
+                                >
+                                  <Pencil size={14} />
+                                </Button>
+                                <Button
+                                  tone="quiet"
+                                  className="ml-1 min-h-8 p-2"
+                                  aria-label={"Delete " + task.title}
+                                  disabled={state.busy}
+                                  onClick={() => setRemove(task)}
+                                >
+                                  <Trash2 size={14} />
+                                </Button>
+                              </span>
+                            </div>
+                            <h3 className="mt-3 font-semibold leading-6">
+                              {task.title}
+                            </h3>
+                            {task.description && (
+                              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
+                                {task.description}
+                              </p>
+                            )}
+                            <p className="mt-4 text-[11px] text-muted">
+                              {projectName(task.projectId)}
+                            </p>
+                            {task.dueDate && (
+                              <p
+                                className={`mt-2 text-xs ${task.status !== "Done" && task.dueDate < localToday() ? "text-danger" : "text-muted"}`}
+                              >
+                                Due {task.dueDate}
+                              </p>
+                            )}
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {status !== "Done" && (
+                                <Button
+                                  tone="quiet"
+                                  className="min-h-9 px-3 py-2 text-xs"
+                                  disabled={state.busy}
+                                  onClick={() =>
+                                    void save(
+                                      state.records.map((record) =>
+                                        record.id === task.id
+                                          ? {
+                                              ...task,
+                                              status: "Done",
+                                              updatedAt:
+                                                new Date().toISOString(),
+                                            }
+                                          : record,
+                                      ),
+                                      "Task completed.",
+                                    )
+                                  }
+                                >
+                                  <Check size={14} />
+                                  Mark complete
+                                </Button>
+                              )}
+                              {status === "To do" && (
+                                <Button
+                                  tone="quiet"
+                                  className="min-h-9 px-3 py-2 text-xs"
+                                  disabled={state.busy}
+                                  onClick={() =>
+                                    void save(
+                                      state.records.map((record) =>
+                                        record.id === task.id
+                                          ? {
+                                              ...task,
+                                              status: "In progress",
+                                              updatedAt:
+                                                new Date().toISOString(),
+                                            }
+                                          : record,
+                                      ),
+                                      "Task started.",
+                                    )
+                                  }
+                                >
+                                  Start task
+                                </Button>
+                              )}
+                              {status === "Done" && (
+                                <Button
+                                  tone="quiet"
+                                  className="min-h-9 px-3 py-2 text-xs"
+                                  disabled={state.busy}
+                                  onClick={() =>
+                                    void save(
+                                      state.records.map((record) =>
+                                        record.id === task.id
+                                          ? {
+                                              ...task,
+                                              status: "To do",
+                                              updatedAt:
+                                                new Date().toISOString(),
+                                            }
+                                          : record,
+                                      ),
+                                      "Task reopened.",
+                                    )
+                                  }
+                                >
+                                  Reopen task
+                                </Button>
+                              )}
+                            </div>
+                          </article>
+                        ))}
+                      {!shownTasks.some((task) => task.status === status) && (
+                        <p className="rounded-xl border border-dashed border-line p-6 text-center text-xs leading-6 text-muted">
+                          {status === "To do"
+                            ? "A little breathing room. Add your next task."
+                            : status === "In progress"
+                              ? "Start a task when you are ready to focus."
+                              : "Your completed work will appear here."}
+                        </p>
+                      )}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )}
           </>
         )}
         {view === "notes" && (
@@ -711,18 +981,29 @@ export default function WorkStudio({
               </article>
             ))}
             {!shownNotes.length && (
-              <div className="rounded-2xl border border-dashed border-line p-8 text-center md:col-span-2 xl:col-span-3">
-                <BookOpen className="mx-auto mb-4 text-primary" />
-                <h2 className="font-semibold">
-                  Keep the context beside your tasks.
-                </h2>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  Write a project note or review an export from Notes Workspace
-                  before importing it.
-                </p>
-                <Button className="mt-5" onClick={() => open({ kind: "note" })}>
-                  Add note
-                </Button>
+              <div className="md:col-span-2 xl:col-span-3">
+                <EmptyState
+                  icon={BookOpen}
+                  eyebrow="Ideas, kept in context"
+                  title={
+                    notes.length
+                      ? "No notes match this view."
+                      : "Keep the context beside your tasks."
+                  }
+                  description={
+                    notes.length
+                      ? "Clear your search and project filter to see all your notes again."
+                      : "Write a project note or review a saved Notes Workspace export before importing it."
+                  }
+                >
+                  <Button
+                    onClick={() =>
+                      notes.length ? clearFilters() : open({ kind: "note" })
+                    }
+                  >
+                    {notes.length ? "Clear filters" : "Add note"}
+                  </Button>
+                </EmptyState>
               </div>
             )}
           </section>
@@ -732,7 +1013,7 @@ export default function WorkStudio({
             aria-label="Projects"
             className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3"
           >
-            {projects.map((item) => {
+            {shownProjects.map((item) => {
               const linked = tasks.filter((task) => task.projectId === item.id);
               const complete = linked.filter(
                 (task) => task.status === "Done",
@@ -773,19 +1054,32 @@ export default function WorkStudio({
                 </article>
               );
             })}
-            {!projects.length && (
-              <div className="rounded-2xl border border-dashed border-line p-8 text-center md:col-span-2 xl:col-span-3">
-                <h2 className="font-semibold">Start with one clear project.</h2>
-                <p className="mt-3 text-sm text-muted">
-                  Existing tasks remain safely in Inbox until you choose a
-                  project for them.
-                </p>
-                <Button
-                  className="mt-5"
-                  onClick={() => open({ kind: "project" })}
+            {!shownProjects.length && (
+              <div className="md:col-span-2 xl:col-span-3">
+                <EmptyState
+                  icon={FolderKanban}
+                  eyebrow="A home for the whole picture"
+                  title={
+                    projects.length
+                      ? "No projects match this view."
+                      : "Start with one clear project."
+                  }
+                  description={
+                    projects.length
+                      ? "Clear your filters to return to all your projects."
+                      : "Give related work a shared purpose. Existing tasks remain in Inbox until you choose a project for them."
+                  }
                 >
-                  New project
-                </Button>
+                  <Button
+                    onClick={() =>
+                      projects.length
+                        ? clearFilters()
+                        : open({ kind: "project" })
+                    }
+                  >
+                    {projects.length ? "Clear filters" : "New project"}
+                  </Button>
+                </EmptyState>
               </div>
             )}
           </section>
@@ -802,12 +1096,22 @@ export default function WorkStudio({
         busy={state.busy}
       >
         <form
+          ref={editorForm}
           key={editor?.record?.id || noun}
           onSubmit={(event) => void submit(event)}
-          onChange={() => setDirty(true)}
-          onInput={() => setDirty(true)}
+          onChange={changed}
+          onInput={changed}
           className="grid gap-4"
         >
+          {drafts.storageError && (
+            <p role="status" className="text-sm text-danger">
+              {drafts.storageError}
+            </p>
+          )}
+          <p className="text-xs text-muted">
+            Unsaved text is kept in this tab until saved, discarded, or signed
+            out.
+          </p>
           <fieldset disabled={state.busy} className="grid min-w-0 gap-4">
             {editor?.kind === "project" ? (
               <>
@@ -815,7 +1119,9 @@ export default function WorkStudio({
                   Project name
                   <Input
                     name="name"
-                    defaultValue={currentProject?.name}
+                    defaultValue={
+                      recovered?.values.name ?? currentProject?.name
+                    }
                     required
                     minLength={2}
                     maxLength={80}
@@ -825,7 +1131,10 @@ export default function WorkStudio({
                   Project description
                   <Textarea
                     name="description"
-                    defaultValue={currentProject?.description}
+                    defaultValue={
+                      recovered?.values.description ??
+                      currentProject?.description
+                    }
                     maxLength={1000}
                   />
                 </label>
@@ -836,7 +1145,10 @@ export default function WorkStudio({
                   {editor?.kind === "note" ? "Title" : "Task title"}
                   <Input
                     name="title"
-                    defaultValue={currentTask?.title || currentNote?.title}
+                    defaultValue={
+                      recovered?.values.title ??
+                      (currentTask?.title || currentNote?.title)
+                    }
                     required
                     maxLength={editor?.kind === "note" ? 160 : 200}
                   />
@@ -848,12 +1160,13 @@ export default function WorkStudio({
                     name="projectId"
                     label="Project"
                     defaultValue={
-                      currentTask?.projectId ||
-                      currentNote?.projectId ||
-                      (project !== "all" ? project : "inbox")
+                      recovered?.values.projectId ??
+                      (currentTask?.projectId ||
+                        currentNote?.projectId ||
+                        (project !== "all" ? project : "inbox"))
                     }
                     options={projectOptions}
-                    onChange={() => setDirty(true)}
+                    onChange={changed}
                   />
                 </div>
                 {editor?.kind === "note" ? (
@@ -862,7 +1175,9 @@ export default function WorkStudio({
                       Note
                       <Textarea
                         name="body"
-                        defaultValue={currentNote?.body}
+                        defaultValue={
+                          recovered?.values.body ?? currentNote?.body
+                        }
                         required
                         maxLength={20000}
                         className="min-h-64"
@@ -872,7 +1187,7 @@ export default function WorkStudio({
                       Tag
                       <Input
                         name="tag"
-                        defaultValue={currentNote?.tag}
+                        defaultValue={recovered?.values.tag ?? currentNote?.tag}
                         maxLength={40}
                       />
                     </label>
@@ -883,7 +1198,10 @@ export default function WorkStudio({
                       Description
                       <Textarea
                         name="description"
-                        defaultValue={currentTask?.description}
+                        defaultValue={
+                          recovered?.values.description ??
+                          currentTask?.description
+                        }
                         maxLength={2000}
                       />
                     </label>
@@ -894,12 +1212,15 @@ export default function WorkStudio({
                           id="work-priority"
                           name="priority"
                           label="Priority"
-                          defaultValue={currentTask?.priority || "Normal"}
+                          defaultValue={
+                            recovered?.values.priority ??
+                            (currentTask?.priority || "Normal")
+                          }
                           options={["Low", "Normal", "High"].map((value) => ({
                             value,
                             label: value,
                           }))}
-                          onChange={() => setDirty(true)}
+                          onChange={changed}
                         />
                       </div>
                       <div className={fieldLabel}>
@@ -908,12 +1229,15 @@ export default function WorkStudio({
                           id="work-status"
                           name="status"
                           label="Status"
-                          defaultValue={currentTask?.status || "To do"}
+                          defaultValue={
+                            recovered?.values.status ??
+                            (currentTask?.status || "To do")
+                          }
                           options={statuses.map((value) => ({
                             value,
                             label: value,
                           }))}
-                          onChange={() => setDirty(true)}
+                          onChange={changed}
                         />
                       </div>
                     </div>
@@ -923,7 +1247,9 @@ export default function WorkStudio({
                         id="work-date"
                         name="dueDate"
                         label="Due date"
-                        defaultValue={currentTask?.dueDate}
+                        defaultValue={
+                          recovered?.values.dueDate ?? currentTask?.dueDate
+                        }
                       />
                     </div>
                   </>
@@ -964,6 +1290,8 @@ export default function WorkStudio({
           <Button
             tone="danger"
             onClick={() => {
+              drafts.clear();
+              setRecovered(null);
               setDiscard(false);
               setEditor(null);
               setDirty(false);

@@ -17,7 +17,11 @@
     "check": "npm run typecheck && npm run lint",
     "test:api": "api/.venv/bin/python api/scripts/local_postgres.py --temporary -- manage.py test workspace --verbosity 1",
     "test:runner": "api/.venv/bin/python api/scripts/check_runner_cleanup.py",
-    "test:a11y": "playwright test -c playwright.connected.config.ts accessibility.spec.ts"
+    "test:a11y": "playwright test -c playwright.connected.config.ts accessibility.spec.ts",
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "test:restore": "api/.venv/bin/python api/scripts/local_postgres.py --temporary -- scripts/restore_drill.py",
+    "test:e2e:cross": "playwright test -c playwright.cross.config.ts",
+    "test:budgets": "node --test scripts/check-bundle.test.mjs"
   },
   "dependencies": {
     "@daypicker/react": "10.0.2",
