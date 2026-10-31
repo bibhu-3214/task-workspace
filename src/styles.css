@@ -17,9 +17,9 @@
 @layer base {
   :root {
     --ink: #172033;
-    --muted: #66728a;
+    --muted: #5c6880;
     --line: #e3e8f1;
-    --primary: #5b5ce2;
+    --primary: #5354d4;
     --soft: #eeedff;
     --surface: #fff;
     --canvas: #f5f6fa;

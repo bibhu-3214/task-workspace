@@ -304,7 +304,7 @@ export default function AccountWorkspaceGate<T>({
     );
   return (
     <>
-      <div className="platform-session sticky top-0 z-40 flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2 text-xs text-muted sm:px-7">
+      <section aria-label="Account controls" className="platform-session sticky top-0 z-40 flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2 text-xs text-muted sm:px-7">
         <span className="flex items-center gap-2">
           <ShieldCheck size={14} className="text-success" />
           <strong className="font-semibold text-ink">{account.name}</strong> ·
@@ -350,7 +350,7 @@ export default function AccountWorkspaceGate<T>({
             Sign out
           </button>
         </span>
-      </div>
+      </section>
       {error && (
         <div
           role="alert"

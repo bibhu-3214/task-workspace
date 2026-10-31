@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -125,6 +126,7 @@ export function Modal({
   onClose: () => void;
   busy?: boolean;
 }) {
+  const returnFocus = useRef<HTMLElement | null>(null);
   return (
     <Dialog.Root
       open={open}
@@ -135,6 +137,19 @@ export function Modal({
       <Dialog.Portal>
         <Dialog.Overlay className="workspace-overlay fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-sm" />
         <Dialog.Content
+          onOpenAutoFocus={() => {
+            returnFocus.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const target = returnFocus.current?.isConnected
+              ? returnFocus.current
+              : document.querySelector<HTMLElement>("main");
+            target?.focus({ preventScroll: true });
+          }}
           onPointerDownOutside={(event) => {
             if (busy) event.preventDefault();
           }}

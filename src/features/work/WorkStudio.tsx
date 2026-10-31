@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   BookOpen,
@@ -69,6 +69,17 @@ export default function WorkStudio({
       : params.get("view") === "projects"
         ? "projects"
         : "board";
+  const main = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const titles = {
+      board: "Task board",
+      notes: "Project notes",
+      projects: "Projects",
+    };
+    document.title = `${titles[view]} · ${product.title}`;
+    main.current?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [view]);
   const [query, setQuery] = useState(""),
     [project, setProject] = useState("all");
   const [editor, setEditor] = useState<Editor | null>(null),
@@ -288,13 +299,14 @@ export default function WorkStudio({
         <div className="mt-10 hidden border-t border-line pt-5 text-xs leading-6 text-muted lg:block">
           <strong className="block text-ink">Your private workspace</strong>
           <p className="mt-2">
-            Tasks and notes stay together. Import a saved Notes Workspace
-            JSON export to bring existing notes into your projects.
+            Tasks and notes stay together. Import a saved Notes Workspace JSON
+            export to bring existing notes into your projects.
           </p>
         </div>
       </aside>
       <main
         id="work-main"
+        ref={main}
         tabIndex={-1}
         className="mx-auto max-w-[1700px] p-4 outline-none sm:p-8 lg:ml-64 lg:p-10"
       >
